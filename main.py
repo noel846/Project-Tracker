@@ -4,34 +4,50 @@ pygame.init()
 # TODO: give the window a title — look up pygame.display.set_caption
 #       it takes a string, like the name of your app
 
-window = pygame.display.set_mode((600,750), pygame.RESIZABLE)
+window = pygame.display.set_mode((600,600), pygame.RESIZABLE)
 pygame.display.set_caption("project tracker")
 
 # --- polka dot background ---
-# TODO: draw the dots ONCE before the loop starts, not every frame
-#       (drawing every frame is wasteful — the dots never move)
-# TODO: pygame.Surface lets you create a blank canvas to draw on
-#       think of it like a piece of paper separate from the window
-# TODO: fill that surface with white first, then draw dots on top of it
-# TODO: to make a grid of dots, use two nested for loops:
-#       the outer loop moves across x (left to right), the inner loop moves down y (top to bottom)
-#       increase x and y by the same fixed amount each step — that's your dot spacing
-# TODO: at each (x, y) grid point, draw a small filled circle — pygame.draw.circle is what you want
-#       a radius of 2 or 3 pixels looks clean
-# TODO: save the finished surface in a variable so you can paste (blit) it onto the window each frame
+dot_surface = pygame.Surface((600,600))
+dot_surface.fill((255,255,255))
+spacing = 30
+for x in range(0, 600, spacing):
+    for y in range(0, 600, spacing):
+        pygame.draw.circle(dot_surface, (200,200,200), (x, y), 2)
+# do this ONCE before the loop — the dots never move so no need to redraw them every frame
+
+# step 1: make a blank canvas the same size as the window
+#         dot_surface = pygame.Surface((600, 750))
+
+# step 2: fill it white so the background isn't black
+#         dot_surface.fill((255, 255, 255))
+
+# step 3: pick a spacing — how far apart the dots are (try 30)
+#         spacing = 30
+
+# step 4: draw a grid of dots using two loops
+#         the outer loop goes across (x), the inner loop goes down (y)
+#         for x in range(0, 600, spacing):
+#             for y in range(0, 750, spacing):
+#                 pygame.draw.circle(dot_surface, (200, 200, 200), (x, y), 2)
+#         the (200, 200, 200) is a light grey color — change it if you want
+#         the 2 at the end is the dot radius in pixels
+
+# step 5: now dot_surface is ready — remove the window.fill below and replace it with:
+#         window.blit(dot_surface, (0, 0))
 
 # --- your project data ---
-# TODO: use a list to store multiple projects
-# TODO: each project can be a dictionary — think of it like a row in a spreadsheet
-#       each key is a column: name, status, tags
-#       example status values: "todo", "in progress", "done"
-#       tags can be another list inside the dict, like ["urgent", "client"]
-# TODO: write 3-4 fake projects by hand for now so you have something to display
+projects = [
+    {"name": "project1", "status": "done", "tags": ["tag1"]},
+    {"name": "project2", "status": "on hold", "tags": ["tag2"]},
+    {"name": "project3", "status": "deadline", "tags": ["tag3"]},
+]
+# FIXME: tags should be a list, like ["tag1", "tag2"] — you can have multiple tags per project
 
 # --- fonts ---
-# TODO: pygame can't render text without loading a font first
-# TODO: pygame.font.SysFont("arial", size) gives you a font using fonts already on your computer
-# TODO: make two — a smaller one for regular text (around 16) and a bigger one for headings (around 20)
+font_small = pygame.font.SysFont("arial", 16)
+font_big = pygame.font.SysFont("arial", 20)
+# FIXME: give the fonts names so you can use them — font_small for regular text, font_heading for titles
 
 run = True
 while run:
@@ -41,7 +57,7 @@ while run:
         if event.type == pygame.QUIT:
             run = False
         if event.type == pygame.KEYDOWN:
-            command = "main.py"  # FIXME: command is set but never used — wire up key handling logic
+            pass  # FIXME: wire up key handling logic here
 
     win_w, win_h = window.get_size()
 
@@ -49,18 +65,27 @@ while run:
     #       window.blit(your_surface, (0, 0)) draws it starting from the top-left corner
     #       if you resize the window the dots won't cover the new area — don't worry about that yet
 
-    window.fill((255, 255, 255))
+    window.blit(dot_surface, (0,0))
 
     # --- layout lines ---
     pygame.draw.line(window, (0, 0, 0), (win_w // 4, 0), (win_w // 4, win_h), 2)
     pygame.draw.line(window, (0, 0, 0), (0, win_h // 2), (win_w // 4, win_h // 2), 2)
 
     # --- sidebar (the thin left strip, from x=0 to x=win_w//4) ---
+
     # TODO: this is where you put navigation — like a list of your status categories
     # TODO: to draw text, first do: text_surface = font.render("your text", True, (r, g, b))
     #       then blit it onto the window at a position: window.blit(text_surface, (x, y))
     # TODO: top half of the sidebar (y from 0 to win_h//2): list the status names
-    # TODO: bottom half (y from win_h//2 to win_h): show counts, like "3 projects" or "1 done"
+    # TODO: top half counts — show how many projects are in each status, like "2 done"
+
+    # --- sidebar bottom half: tags ---
+    # TODO: bottom half (y from win_h//2 to win_h): show all tags that exist across your projects
+    #       loop through every project and its tags list, collect unique tags with a set()
+    # TODO: draw each tag as a small pill — pygame.draw.rect with a corner radius, then blit the name on top
+    # TODO: to add a new tag: press a key to enter "typing mode", capture KEYDOWN events to build a string,
+    #       Enter saves it, Escape cancels — store custom tags in a separate list outside projects
+    # TODO: to assign a tag to a project, click the tag in the sidebar then click a project card
 
     # --- main panel (the big right area, from x=win_w//4 to x=win_w) ---
     # TODO: this is where your project cards go — like the columns in the inspo screenshot
