@@ -8,13 +8,9 @@ window = pygame.display.set_mode((600,600), pygame.RESIZABLE)
 pygame.display.set_caption("project tracker")
 
 # --- polka dot background ---
-dot_surface = pygame.Surface((600,600))
-dot_surface.fill((255,255,255))
 spacing = 30
-for x in range(0, 600, spacing):
-    for y in range(0, 600, spacing):
-        pygame.draw.circle(dot_surface, (200,200,200), (x, y), 2)
-# do this ONCE before the loop — the dots never move so no need to redraw them every frame
+dot_surface = None
+last_size = (0, 0)
 
 # step 1: make a blank canvas the same size as the window
 #         dot_surface = pygame.Surface((600, 750))
@@ -48,7 +44,8 @@ projects = [
 font_small = pygame.font.SysFont("arial", 16)
 font_big = pygame.font.SysFont("arial", 20)
 # FIXME: give the fonts names so you can use them — font_small for regular text, font_heading for titles
-
+SIDEBAR_X = 150
+shadow_w = 8
 run = True
 while run:
     pygame.time.delay(100)
@@ -61,18 +58,42 @@ while run:
 
     win_w, win_h = window.get_size()
 
-    # TODO: paste (blit) your polka dot surface onto the window here — this replaces window.fill
-    #       window.blit(your_surface, (0, 0)) draws it starting from the top-left corner
-    #       if you resize the window the dots won't cover the new area — don't worry about that yet
+    if (win_w, win_h) != last_size:
+        dot_surface = pygame.Surface((win_w, win_h))
+        dot_surface.fill((255, 255, 255))
+        for x in range(0, win_w, spacing):
+            for y in range(0, win_h, spacing):
+                pygame.draw.circle(dot_surface, (200, 200, 200), (x, y), 2)
+        last_size = (win_w, win_h)
 
-    window.blit(dot_surface, (0,0))
+    window.blit(dot_surface, (0, 0))
+    for i in range(shadow_w):
+        alpha = 60 - i * 7
+        strip = pygame.Surface((1, win_h), pygame.SRCALPHA)
+        strip.fill((0, 0, 0, alpha))
+        window.blit(strip, (SIDEBAR_X + i, 0))
+
+    # TODO: draw a shadow along the right edge of the sidebar (at x=SIDEBAR_X)
+    #       pygame can't blur, so fake it with a few semi-transparent vertical strips getting lighter
+    #       create a surface for each strip, fill it with black + low alpha, blit it just right of the box:
+    #           shadow_w = 8  # how wide the shadow is in pixels
+    #           for i in range(shadow_w):
+    #               alpha = 60 - i * 7  # starts darker, fades out — tweak these numbers
+    #               strip = pygame.Surface((1, win_h), pygame.SRCALPHA)
+    #               strip.fill((0, 0, 0, alpha))
+    #               window.blit(strip, (SIDEBAR_X + i, 0))
+    #       do this BEFORE drawing the white sidebar box so the shadow sits behind it
+
+    sidebar_overlay = pygame.Surface((SIDEBAR_X, win_h), pygame.SRCALPHA)
+    sidebar_overlay.fill((255, 255, 255, 180))
+    window.blit(sidebar_overlay, (0, 0))
 
     # --- layout lines ---
-    pygame.draw.line(window, (0, 0, 0), (win_w // 4, 0), (win_w // 4, win_h), 2)
-    pygame.draw.line(window, (0, 0, 0), (0, win_h // 2), (win_w // 4, win_h // 2), 2)
+    
+    pygame.draw.line(window, (0, 0, 0), (SIDEBAR_X, 0), (SIDEBAR_X, win_h), 2)
+    pygame.draw.line(window, (0, 0, 0), (0, win_h * 3 // 5), (SIDEBAR_X, win_h * 3 // 5), 2)
 
     # --- sidebar (the thin left strip, from x=0 to x=win_w//4) ---
-
     # TODO: this is where you put navigation — like a list of your status categories
     # TODO: to draw text, first do: text_surface = font.render("your text", True, (r, g, b))
     #       then blit it onto the window at a position: window.blit(text_surface, (x, y))
