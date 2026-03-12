@@ -90,16 +90,21 @@ while run:
     statuses = list({p["status"] for p in projects})
 
     # step 1: go through every project and collect all the different statuses into a list
-    #         (hint: use a set so you don't get duplicates, then convert it to a list)
+    #         statuses = list({p["status"] for p in projects})
     # step 2: divide the main panel into equal columns — one column for each status
-    #         (hint: column width = panel width divided by how many statuses there are)
+    #         col_w = panel_w // len(statuses)
     # step 3: draw a line between each column so they look separate
+    #         pygame.draw.line(window, (0,0,0), (x, 0), (x, win_h), 1)
     # step 4: write the status name at the top of its column, like a heading
+    #         use font_big.render(status, ...) and blit it near the top of the column
     # step 5: go through your projects list — for each project, find which column it belongs in
-    #         (hint: match project["status"] to the right column)
+    #         i = statuses.index(project["status"])
     # step 6: draw a rectangle for each project card, then write the project name on it
+    #         pygame.draw.rect(window, (220,220,255), (x, y, col_w-10, 50), border_radius=6)
     # step 7: keep track of how far down each column you've drawn, so the next card goes below the last one
+    #         col_y = [40] * len(statuses)   then do col_y[i] += card_height after each card
     # step 8: when the user clicks a card, remember which one they clicked so you can show more info
+    #         check event.type == pygame.MOUSEBUTTONDOWN and compare event.pos to each card's rect
 
     pygame.display.update()
 pygame.quit()
