@@ -2,7 +2,6 @@ import pygame, sys, subprocess
 pygame.init()
 
 # TODO: give the window a title — look up pygame.display.set_caption
-#       it takes a string, like the name of your app
 
 window = pygame.display.set_mode((600,600), pygame.RESIZABLE)
 pygame.display.set_caption("project tracker")
@@ -12,25 +11,8 @@ spacing = 30
 dot_surface = None
 last_size = (0, 0)
 
-# step 1: make a blank canvas the same size as the window
-#         dot_surface = pygame.Surface((600, 750))
-
-# step 2: fill it white so the background isn't black
-#         dot_surface.fill((255, 255, 255))
-
-# step 3: pick a spacing — how far apart the dots are (try 30)
-#         spacing = 30
-
-# step 4: draw a grid of dots using two loops
-#         the outer loop goes across (x), the inner loop goes down (y)
-#         for x in range(0, 600, spacing):
-#             for y in range(0, 750, spacing):
-#                 pygame.draw.circle(dot_surface, (200, 200, 200), (x, y), 2)
-#         the (200, 200, 200) is a light grey color — change it if you want
-#         the 2 at the end is the dot radius in pixels
-
-# step 5: now dot_surface is ready — remove the window.fill below and replace it with:
-#         window.blit(dot_surface, (0, 0))
+# TODO: make a Surface the size of the window, fill it white, then draw a grid of dots with two nested loops
+# TODO: use window.blit to draw it each frame instead of window.fill
 
 # --- your project data ---
 projects = [
@@ -45,6 +27,8 @@ font_small = pygame.font.SysFont("arial", 16)
 font_big = pygame.font.SysFont("arial", 20)
 # FIXME: give the fonts names so you can use them — font_small for regular text, font_heading for titles
 SIDEBAR_X = 150
+win_w, win_h = window.get_size()
+panel_w = win_w - SIDEBAR_X
 run = True
 while run:
     pygame.time.delay(100)
@@ -54,8 +38,6 @@ while run:
             run = False
         if event.type == pygame.KEYDOWN:
             pass  # FIXME: wire up key handling logic here
-
-    win_w, win_h = window.get_size()
 
     if (win_w, win_h) != last_size:
         dot_surface = pygame.Surface((win_w, win_h))
@@ -70,7 +52,7 @@ while run:
     pygame.draw.rect(window, (255, 255, 255), (0, 0, SIDEBAR_X, win_h))
 
     # --- layout lines ---
-    
+
     pygame.draw.line(window, (0, 0, 0), (SIDEBAR_X, 0), (SIDEBAR_X, win_h), 2)
     pygame.draw.line(window, (0, 0, 0), (0, win_h * 3 // 5), (SIDEBAR_X, win_h * 3 // 5), 2)
 
@@ -87,63 +69,29 @@ while run:
     window.blit(text_surface, (10,90))
     text_surface = font_small.render("project3", True, (0,0,0))
     window.blit(text_surface, (20,100))
-    # TODO: this is where you put navigation — like a list of your status categories
-    # TODO: to draw text, first do: text_surface = font.render("your text", True, (r, g, b))
-    #       then blit it onto the window at a position: window.blit(text_surface, (x, y))
-    # TODO: top half of the sidebar (y from 0 to win_h//2): list the status names
-    # TODO: top half counts — show how many projects are in each status, like "2 done"
+    # TODO: top half — list each status name and how many projects have it
 
     # --- sidebar bottom half: tags ---
     tags = set()
     for project in projects:
         for tag in project["tags"]:
             tags.add(tag)
-            
+
     y = win_h * 3 // 5 + 10
     for tag in tags:
         text_surface = font_small.render(tag, True, (0,0,0))
         window.blit(text_surface, (10, y))
         y += 20
-    # TODO: bottom half (y from win_h//2 to win_h): show all tags that exist across your projects
-    #       loop through every project and its tags list, collect unique tags with a set()
-    # TODO: draw each tag as a small pill — pygame.draw.rect with a corner radius, then blit the name on top
-    # TODO: to add a new tag: press a key to enter "typing mode", capture KEYDOWN events to build a string,
-    #       Enter saves it, Escape cancels — store custom tags in a separate list outside projects
-    # TODO: to assign a tag to a project, click the tag in the sidebar then click a project card
+    # TODO: draw each tag as a small pill (rect with rounded corners)
+    # TODO: pressing a key enters typing mode to create a new tag; Enter saves, Escape cancels
+    # TODO: clicking a tag then a project card assigns the tag to that project
 
     # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
+    statuses = list({p["status"] for p in projects})
 
-    # step 1: figure out how wide the main panel is
-    #         panel_w = win_w - SIDEBAR_X
-
-    # step 2: collect all unique statuses from your projects list
-    #         statuses = list({p["status"] for p in projects})
-    #         this gives you something like ["done", "on hold", "deadline"]
-
-    # step 3: divide the panel into equal columns, one per status
-    #         col_w = panel_w // len(statuses)
-    #         each column starts at: SIDEBAR_X + i * col_w   (where i is 0, 1, 2...)
-
-    # step 4: draw a heading at the top of each column
-    #         for i, status in enumerate(statuses):
-    #             x = SIDEBAR_X + i * col_w + 10
-    #             text_surface = font_big.render(status, True, (0, 0, 0))
-    #             window.blit(text_surface, (x, 10))
-
-    # step 5: draw a card for each project under the right column
-    #         keep a counter per column to track how far down to place the next card
-    #         col_y = [40] * len(statuses)   # starting y for each column
-    #         card_h = 50
-    #         for project in projects:
-    #             i = statuses.index(project["status"])   # which column does this project go in?
-    #             x = SIDEBAR_X + i * col_w + 5
-    #             y = col_y[i]
-    #             pygame.draw.rect(window, (220, 220, 255), (x, y, col_w - 10, card_h), border_radius=6)
-    #             text_surface = font_small.render(project["name"], True, (0, 0, 0))
-    #             window.blit(text_surface, (x + 8, y + 10))
-    #             col_y[i] += card_h + 8   # move down for the next card in this column
-    # TODO: to stack cards vertically, keep a counter per column
-    #       each new card in that column is drawn lower by one card height
+    # TODO: collect unique statuses from projects and divide the panel into one column each
+    # TODO: draw a heading at the top of each column
+    # TODO: loop through projects and draw a card in the right column — stack cards downward
 
     pygame.display.update()
 pygame.quit()
