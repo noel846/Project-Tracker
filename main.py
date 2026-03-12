@@ -89,14 +89,14 @@ while run:
     # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
     statuses = list({p["status"] for p in projects})
 
-    # TODO: collect unique statuses from projects and divide the panel into one column each
-    # TODO: figure out the column width: panel width divided by number of statuses
-    # TODO: draw a vertical divider line between each column
-    # TODO: draw a heading at the top of each column
-    # TODO: loop through projects and draw a card in the right column — stack cards downward
-    # TODO: each card is a colored rectangle with the project name blitted on top
-    # TODO: track how far down each column is so cards don't overlap
-    # TODO: clicking a card should select it and show its details somewhere
+    # step 1: collect unique statuses from projects
+    # step 2: figure out the column width — panel width divided by number of statuses
+    # step 3: draw a vertical divider line between each column
+    # step 4: draw a heading at the top of each column
+    # step 5: loop through projects and place each one in the matching column
+    # step 6: draw each card as a colored rectangle with the project name on top
+    # step 7: track how far down each column is so cards don't overlap
+    # step 8: clicking a card selects it and shows its details somewhere
 
     pygame.display.update()
 pygame.quit()
