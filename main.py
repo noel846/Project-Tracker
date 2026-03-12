@@ -45,7 +45,6 @@ font_small = pygame.font.SysFont("arial", 16)
 font_big = pygame.font.SysFont("arial", 20)
 # FIXME: give the fonts names so you can use them — font_small for regular text, font_heading for titles
 SIDEBAR_X = 150
-shadow_w = 8
 run = True
 while run:
     pygame.time.delay(100)
@@ -67,26 +66,8 @@ while run:
         last_size = (win_w, win_h)
 
     window.blit(dot_surface, (0, 0))
-    for i in range(shadow_w):
-        alpha = 60 - i * 7
-        strip = pygame.Surface((1, win_h), pygame.SRCALPHA)
-        strip.fill((0, 0, 0, alpha))
-        window.blit(strip, (SIDEBAR_X + i, 0))
 
-    # TODO: draw a shadow along the right edge of the sidebar (at x=SIDEBAR_X)
-    #       pygame can't blur, so fake it with a few semi-transparent vertical strips getting lighter
-    #       create a surface for each strip, fill it with black + low alpha, blit it just right of the box:
-    #           shadow_w = 8  # how wide the shadow is in pixels
-    #           for i in range(shadow_w):
-    #               alpha = 60 - i * 7  # starts darker, fades out — tweak these numbers
-    #               strip = pygame.Surface((1, win_h), pygame.SRCALPHA)
-    #               strip.fill((0, 0, 0, alpha))
-    #               window.blit(strip, (SIDEBAR_X + i, 0))
-    #       do this BEFORE drawing the white sidebar box so the shadow sits behind it
-
-    sidebar_overlay = pygame.Surface((SIDEBAR_X, win_h), pygame.SRCALPHA)
-    sidebar_overlay.fill((255, 255, 255, 180))
-    window.blit(sidebar_overlay, (0, 0))
+    pygame.draw.rect(window, (255, 255, 255), (0, 0, SIDEBAR_X, win_h))
 
     # --- layout lines ---
     
@@ -94,6 +75,18 @@ while run:
     pygame.draw.line(window, (0, 0, 0), (0, win_h * 3 // 5), (SIDEBAR_X, win_h * 3 // 5), 2)
 
     # --- sidebar (the thin left strip, from x=0 to x=win_w//4) ---
+    text_surface = font_small.render("folder1", True, (0,0,0))
+    window.blit(text_surface, (10,30))
+    text_surface = font_small.render("project1", True, (0,0,0))
+    window.blit(text_surface, (20,40))
+    text_surface = font_small.render("folder2", True, (0,0,0))
+    window.blit(text_surface, (10,60))
+    text_surface = font_small.render("project2", True, (0,0,0))
+    window.blit(text_surface, (20,70))
+    text_surface = font_small.render("folder3", True, (0,0,0))
+    window.blit(text_surface, (10,90))
+    text_surface = font_small.render("project3", True, (0,0,0))
+    window.blit(text_surface, (20,100))
     # TODO: this is where you put navigation — like a list of your status categories
     # TODO: to draw text, first do: text_surface = font.render("your text", True, (r, g, b))
     #       then blit it onto the window at a position: window.blit(text_surface, (x, y))
@@ -101,6 +94,16 @@ while run:
     # TODO: top half counts — show how many projects are in each status, like "2 done"
 
     # --- sidebar bottom half: tags ---
+    tags = set()
+    for project in projects:
+        for tag in project["tags"]:
+            tags.add(tag)
+            
+    y = win_h * 3 // 5 + 10
+    for tag in tags:
+        text_surface = font_small.render(tag, True, (0,0,0))
+        window.blit(text_surface, (10, y))
+        y += 20
     # TODO: bottom half (y from win_h//2 to win_h): show all tags that exist across your projects
     #       loop through every project and its tags list, collect unique tags with a set()
     # TODO: draw each tag as a small pill — pygame.draw.rect with a corner radius, then blit the name on top
@@ -108,15 +111,37 @@ while run:
     #       Enter saves it, Escape cancels — store custom tags in a separate list outside projects
     # TODO: to assign a tag to a project, click the tag in the sidebar then click a project card
 
-    # --- main panel (the big right area, from x=win_w//4 to x=win_w) ---
-    # TODO: this is where your project cards go — like the columns in the inspo screenshot
-    # TODO: figure out how many status columns you have, then divide the panel width equally
-    #       so if you have 3 statuses and the panel is 450px wide, each column is 150px
-    # TODO: draw a heading at the top of each column (the status name)
-    # TODO: then loop through your projects list — for each project, check its status
-    #       and draw a card in the matching column
-    # TODO: a card is just a rectangle — pygame.draw.rect draws one
-    #       put the project name as text inside it
+    # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
+
+    # step 1: figure out how wide the main panel is
+    #         panel_w = win_w - SIDEBAR_X
+
+    # step 2: collect all unique statuses from your projects list
+    #         statuses = list({p["status"] for p in projects})
+    #         this gives you something like ["done", "on hold", "deadline"]
+
+    # step 3: divide the panel into equal columns, one per status
+    #         col_w = panel_w // len(statuses)
+    #         each column starts at: SIDEBAR_X + i * col_w   (where i is 0, 1, 2...)
+
+    # step 4: draw a heading at the top of each column
+    #         for i, status in enumerate(statuses):
+    #             x = SIDEBAR_X + i * col_w + 10
+    #             text_surface = font_big.render(status, True, (0, 0, 0))
+    #             window.blit(text_surface, (x, 10))
+
+    # step 5: draw a card for each project under the right column
+    #         keep a counter per column to track how far down to place the next card
+    #         col_y = [40] * len(statuses)   # starting y for each column
+    #         card_h = 50
+    #         for project in projects:
+    #             i = statuses.index(project["status"])   # which column does this project go in?
+    #             x = SIDEBAR_X + i * col_w + 5
+    #             y = col_y[i]
+    #             pygame.draw.rect(window, (220, 220, 255), (x, y, col_w - 10, card_h), border_radius=6)
+    #             text_surface = font_small.render(project["name"], True, (0, 0, 0))
+    #             window.blit(text_surface, (x + 8, y + 10))
+    #             col_y[i] += card_h + 8   # move down for the next card in this column
     # TODO: to stack cards vertically, keep a counter per column
     #       each new card in that column is drawn lower by one card height
 
