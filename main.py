@@ -87,7 +87,6 @@ while run:
     # TODO: clicking a tag then a project card assigns the tag to that project
 
     # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
-    statuses = list({p["status"] for p in projects})
 
     # step 1: go through every project and collect all the different statuses into a list
     #         statuses = list({p["status"] for p in projects})
