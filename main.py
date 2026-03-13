@@ -88,22 +88,22 @@ while run:
 
     # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
 
-    # step 1: go through every project and collect all the different statuses into a list
-    #         statuses = list({p["status"] for p in projects})
-    # step 2: divide the main panel into equal columns — one column for each status
-    #         col_w = panel_w // len(statuses)
-    # step 3: draw a line between each column so they look separate
-    #         pygame.draw.line(window, (0,0,0), (x, 0), (x, win_h), 1)
-    # step 4: write the status name at the top of its column, like a heading
-    #         use font_big.render(status, ...) and blit it near the top of the column
-    # step 5: go through your projects list — for each project, find which column it belongs in
-    #         i = statuses.index(project["status"])
-    # step 6: draw a rectangle for each project card, then write the project name on it
-    #         pygame.draw.rect(window, (220,220,255), (x, y, col_w-10, 50), border_radius=6)
-    # step 7: keep track of how far down each column you've drawn, so the next card goes below the last one
-    #         col_y = [40] * len(statuses)   then do col_y[i] += card_height after each card
-    # step 8: when the user clicks a card, remember which one they clicked so you can show more info
-    #         check event.type == pygame.MOUSEBUTTONDOWN and compare event.pos to each card's rect
+    # step 1: draw a progress bar near the top — a grey rect spanning the panel width, with a filled portion on top
+    #         pygame.draw.rect(window, (210,210,210), (px, bar_y, pw, bar_h))   # grey track
+    #         pygame.draw.rect(window, (90,170,90), (px, bar_y, fill_w, bar_h))  # green fill
+    # step 2: label it "progress bar" in small grey text above it, and draw "status" + a small box on the top right
+    #         window.blit(font_small.render("progress bar", True, (120,120,120)), (px, 10))
+    #         pygame.draw.rect(window, (255,255,255), (pr - 20, 8, 18, 18), 2)
+    # step 3: below the progress bar, draw the project name in big text on the left
+    #         window.blit(font_big.render(project["name"], True, (0,0,0)), (px, py))
+    # step 4: on the same row, draw a "tags" label and a box to the right of the name for the project's tags
+    #         pygame.draw.rect(window, (255,255,255), (tags_x, py, tag_box_w, tag_box_h), 2)
+    # step 5: below that, write "notes/todos" as a label, then draw a large empty rectangle under it
+    #         pygame.draw.rect(window, (255,255,255), (px, notes_y, pw, notes_h), 2)
+    # step 6: below that, write "files" as a label, then draw another large empty rectangle under it
+    #         pygame.draw.rect(window, (255,255,255), (px, files_y, pw, files_h), 2)
+    # step 7: at the bottom, write "links" as a label, then draw a horizontal line stretching across the panel
+    #         pygame.draw.line(window, (0,0,0), (px, link_y), (pr, link_y), 1)
 
     pygame.display.update()
 pygame.quit()
