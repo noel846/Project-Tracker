@@ -39,6 +39,14 @@ while run:
         if event.type == pygame.KEYDOWN:
             pass  # FIXME: wire up key handling logic here
 
+    win_w, win_h = window.get_size()
+    panel_w = win_w - SIDEBAR_X
+    px = SIDEBAR_X
+    pw = win_w - SIDEBAR_X
+    pr = win_w
+    bar_h = 10
+    bar_y = 30
+
     if (win_w, win_h) != last_size:
         dot_surface = pygame.Surface((win_w, win_h))
         dot_surface.fill((255, 255, 255))
@@ -87,23 +95,17 @@ while run:
     # TODO: clicking a tag then a project card assigns the tag to that project
 
     # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
+    
+    pygame.draw.rect(window, (210,210,210), (px, bar_y, pw, bar_h))
+    # pygame.draw.rect(window, (255,255,255), )
 
-    # step 1: draw a progress bar near the top — a grey rect spanning the panel width, with a filled portion on top
-    #         pygame.draw.rect(window, (210,210,210), (px, bar_y, pw, bar_h))   # grey track
-    #         pygame.draw.rect(window, (90,170,90), (px, bar_y, fill_w, bar_h))  # green fill
+    # step 1: draw a progress bar near the top — a grey rect for the track, then a green filled rect on top
     # step 2: label it "progress bar" in small grey text above it, and draw "status" + a small box on the top right
-    #         window.blit(font_small.render("progress bar", True, (120,120,120)), (px, 10))
-    #         pygame.draw.rect(window, (255,255,255), (pr - 20, 8, 18, 18), 2)
     # step 3: below the progress bar, draw the project name in big text on the left
-    #         window.blit(font_big.render(project["name"], True, (0,0,0)), (px, py))
     # step 4: on the same row, draw a "tags" label and a box to the right of the name for the project's tags
-    #         pygame.draw.rect(window, (255,255,255), (tags_x, py, tag_box_w, tag_box_h), 2)
     # step 5: below that, write "notes/todos" as a label, then draw a large empty rectangle under it
-    #         pygame.draw.rect(window, (255,255,255), (px, notes_y, pw, notes_h), 2)
     # step 6: below that, write "files" as a label, then draw another large empty rectangle under it
-    #         pygame.draw.rect(window, (255,255,255), (px, files_y, pw, files_h), 2)
     # step 7: at the bottom, write "links" as a label, then draw a horizontal line stretching across the panel
-    #         pygame.draw.line(window, (0,0,0), (px, link_y), (pr, link_y), 1)
 
     pygame.display.update()
 pygame.quit()
