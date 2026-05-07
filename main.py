@@ -16,9 +16,9 @@ last_size = (0, 0)
 
 # --- your project data ---
 projects = [
-    {"name": "project1", "status": "done", "tags": ["tag1"]},
-    {"name": "project2", "status": "on hold", "tags": ["tag2"]},
-    {"name": "project3", "status": "deadline", "tags": ["tag3"]},
+    {"name": "project1", "status": "done", "tags": ["tag1"], "progress": 0.50},
+    {"name": "project2", "status": "on hold", "tags": ["tag2"], "progress": 0.45},
+    {"name": "project3", "status": "deadline", "tags": ["tag3"], "progress": 0.01},
 ]
 # FIXME: tags should be a list, like ["tag1", "tag2"] — you can have multiple tags per project
 
@@ -30,6 +30,7 @@ SIDEBAR_X = 150
 win_w, win_h = window.get_size()
 panel_w = win_w - SIDEBAR_X
 run = True
+offset = 0
 while run:
     pygame.time.delay(100)
 
@@ -38,6 +39,9 @@ while run:
             run = False
         if event.type == pygame.KEYDOWN:
             pass  # FIXME: wire up key handling logic here
+        if event.type == pygame.MOUSEWHEEL:
+            offset += event.y * 20
+
 
     win_w, win_h = window.get_size()
     panel_w = win_w - SIDEBAR_X
@@ -46,6 +50,9 @@ while run:
     pr = win_w
     bar_h = 10
     bar_y = 30
+    selected = 0
+    progress = projects[selected]["progress"]
+    progress_W = pw * progress
 
     if (win_w, win_h) != last_size:
         dot_surface = pygame.Surface((win_w, win_h))
@@ -96,11 +103,22 @@ while run:
 
     # --- main panel (the big right area, from x=SIDEBAR_X to x=win_w) ---
     
-    pygame.draw.rect(window, (210,210,210), (px, bar_y, pw, bar_h))
-    # pygame.draw.rect(window, (255,255,255), )
-
-    # step 1: draw a progress bar near the top — a grey rect for the track, then a green filled rect on top
-    # step 2: label it "progress bar" in small grey text above it, and draw "status" + a small box on the top right
+    pygame.draw.rect(window, (210,210,210), (px, bar_y - offset, pw, bar_h))
+    pygame.draw.rect(window, (0,128,0), (px, bar_y - offset, progress_W, bar_h))
+    text_surface = font_big.render("project1", True, (45,45,45))
+    window.blit(text_surface, (160, 40 - offset))
+    text_surface = font_big.render("tags", True, (45,45,45))
+    window.blit(text_surface, (160, 65 - offset))
+    text_surface = font_big.render("notes/todos", True, (45,45,45))
+    window.blit(text_surface, (160, 120 - offset))
+    pygame.draw.rect(window, (255,255,255), (160, 150 - offset, 395, 250 - offset))
+    text_surface = font_big.render("files", True, (45,45,45))
+    window.blit(text_surface, (160, 400 - offset))
+    pygame.draw.rect(window, (0,0,0), (160, 450 - offset, 395, 450 - offset))
+    text_surface = font_big.render("files", True, (45,45,45))
+    window.blit(text_surface, (160, 550 - offset))
+    # step 1: draw a progress bar near the top — use pygame.draw.rect twice: once grey for the track, once green for the fill
+    # step 2: label it with window.blit in light grey above the bar, and draw a small white box on the top right
     # step 3: below the progress bar, draw the project name in big text on the left
     # step 4: on the same row, draw a "tags" label and a box to the right of the name for the project's tags
     # step 5: below that, write "notes/todos" as a label, then draw a large empty rectangle under it
