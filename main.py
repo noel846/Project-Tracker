@@ -1,5 +1,13 @@
-import pygame, sys, subprocess, ctypes, ctypes.wintypes
+import pygame, sys, subprocess, ctypes, platform
 pygame.init()
+
+IS_WINDOWS = platform.system() == "Windows"
+if IS_WINDOWS:
+    import ctypes.wintypes
+else:
+    import ctypes.util
+    from pygame._sdl2.video import Window as SDLWindow
+    _libSDL2 = ctypes.CDLL(ctypes.util.find_library("SDL2"))
 
 window = pygame.display.set_mode((600,600), pygame.NOFRAME)
 pygame.display.set_caption("project tracker")
@@ -24,35 +32,55 @@ drag_offset_x = 0
 drag_offset_y = 0
 resizing_right = False
 resizing_bottom = False
+resize_start_w = 0
+resize_start_h = 0
+resize_delta_x = 0
+resize_delta_y = 0
+drag_start_win_x = 0
+drag_start_win_y = 0
+drag_start_abs_x = 0
+drag_start_abs_y = 0
 while run:
     pygame.time.delay(16)
     close_rect = pygame.Rect(win_w - 30, 5, 20, 20)
     right_edge = pygame.Rect(win_w - 5, 0, 5, win_h)
     bottom_edge = pygame.Rect(0, win_h - 5, win_w, 5)
 
-    hwnd = pygame.display.get_wm_info()["window"]
+    if IS_WINDOWS:
+        hwnd = pygame.display.get_wm_info()["window"]
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
         if event.type == pygame.KEYDOWN:
             pass  # FIXME: wire up key handling logic here
         if event.type == pygame.MOUSEWHEEL:
-            # TODO: only scroll if pygame.mouse.get_pos()[0] > SIDEBAR_X (mouse is inside the main panel)
-            offset -= event.y * 20
-            # TODO: clamp offset so it can't go below 0 (top) or above the max content height minus win_h
+            if pygame.mouse.get_pos()[0] > SIDEBAR_X:
+                offset -= event.y * 20
+                if offset < 0:
+                    offset = 0
+                if offset > 800 - win_h:
+                    offset = 800 - win_h
         if event.type == pygame.MOUSEBUTTONDOWN:
             if close_rect.collidepoint(event.pos):
                 run = False
             if right_edge.collidepoint(event.pos):
                 resizing_right = True
+                resize_start_w, resize_delta_x = win_w, 0
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
             if bottom_edge.collidepoint(event.pos):
                 resizing_bottom = True
+                resize_start_h, resize_delta_y = win_h, 0
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZENS)
             if event.pos[1] < 35:
                 dragging = True
                 drag_offset_x = event.pos[0]
                 drag_offset_y = event.pos[1]
+                if not IS_WINDOWS:
+                    mx, my = ctypes.c_int(), ctypes.c_int()
+                    _libSDL2.SDL_GetGlobalMouseState(ctypes.byref(mx), ctypes.byref(my))
+                    drag_start_abs_x, drag_start_abs_y = mx.value, my.value
+                    sdl_win = SDLWindow.from_display_module()
+                    drag_start_win_x, drag_start_win_y = sdl_win.position
         if event.type == pygame.MOUSEMOTION:
             if not resizing_right and not resizing_bottom and not dragging:
                 if right_edge.collidepoint(event.pos):
@@ -62,22 +90,39 @@ while run:
                 else:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
             if resizing_right:
-                ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, event.pos[0], win_h, 0x0002)
+                if IS_WINDOWS:
+                    ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, event.pos[0], win_h, 0x0002)
+                else:
+                    resize_delta_x += event.rel[0]
             if resizing_bottom:
-                ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, win_w, event.pos[1], 0x0002)
+                if IS_WINDOWS:
+                    ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, win_w, event.pos[1], 0x0002)
+                else:
+                    resize_delta_y += event.rel[1]
             if dragging:
-                hwnd = pygame.display.get_wm_info()["window"]
-                pt = ctypes.wintypes.POINT()
-                ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-                ctypes.windll.user32.SetWindowPos(hwnd, 0, pt.x - drag_offset_x, pt.y - drag_offset_y, 0, 0, 0x0001)
+                if IS_WINDOWS:
+                    hwnd = pygame.display.get_wm_info()["window"]
+                    pt = ctypes.wintypes.POINT()
+                    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+                    ctypes.windll.user32.SetWindowPos(hwnd, 0, pt.x - drag_offset_x, pt.y - drag_offset_y, 0, 0, 0x0001)
+                else:
+                    mx, my = ctypes.c_int(), ctypes.c_int()
+                    _libSDL2.SDL_GetGlobalMouseState(ctypes.byref(mx), ctypes.byref(my))
+                    sdl_win = SDLWindow.from_display_module()
+                    sdl_win.position = (drag_start_win_x + mx.value - drag_start_abs_x,
+                                        drag_start_win_y + my.value - drag_start_abs_y)
         if event.type == pygame.MOUSEBUTTONUP:
             if resizing_right or resizing_bottom:
-                pt = ctypes.wintypes.POINT()
-                ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-                rect = ctypes.wintypes.RECT()
-                ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
-                new_w = (pt.x - rect.left) if resizing_right else win_w
-                new_h = (pt.y - rect.top) if resizing_bottom else win_h
+                if IS_WINDOWS:
+                    pt = ctypes.wintypes.POINT()
+                    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+                    rect = ctypes.wintypes.RECT()
+                    ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                    new_w = (pt.x - rect.left) if resizing_right else win_w
+                    new_h = (pt.y - rect.top) if resizing_bottom else win_h
+                else:
+                    new_w = (resize_start_w + resize_delta_x) if resizing_right else win_w
+                    new_h = (resize_start_h + resize_delta_y) if resizing_bottom else win_h
                 window = pygame.display.set_mode((max(200, new_w), max(100, new_h)), pygame.NOFRAME)
             dragging = False
             resizing_right = False
@@ -170,9 +215,21 @@ while run:
 
     window.blit(font_big.render("project1", True, (20, 20, 20)), (160, title_h + 10 - offset))
     window.blit(font_small.render("tags", True, (80, 80, 80)), (160, title_h + 32 - offset))
+    for rx, ry, rw, rh in [
+        (155, title_h + 57 - offset, 60, 17),
+        (155, title_h + 112 - offset, 430, 250),
+        (155, 424 - offset, 430, 125),
+    ]:
+        pygame.draw.rect(window, (212, 208, 200), (rx, ry, rw, rh))
+        pygame.draw.line(window, (128, 128, 128), (rx,         ry),         (rx + rw - 1, ry),         1)
+        pygame.draw.line(window, (64,  64,  64),  (rx + 1,     ry + 1),     (rx + rw - 2, ry + 1),     1)
+        pygame.draw.line(window, (128, 128, 128), (rx,         ry),         (rx,           ry + rh - 1), 1)
+        pygame.draw.line(window, (64,  64,  64),  (rx + 1,     ry + 1),     (rx + 1,       ry + rh - 2), 1)
+        pygame.draw.line(window, (255, 255, 255), (rx,         ry + rh - 1), (rx + rw - 1, ry + rh - 1), 1)
+        pygame.draw.line(window, (255, 255, 255), (rx + rw - 1, ry),         (rx + rw - 1, ry + rh - 1), 1)
     window.blit(font_small.render("notes / todos", True, (80, 80, 80)), (160, title_h + 90 - offset))
     window.blit(font_small.render("files", True, (80, 80, 80)), (160, 398 - offset))
-    window.blit(font_small.render("links", True, (80, 80, 80)), (160, 548 - offset))
+    window.blit(font_small.render("links", True, (80, 80, 80)), (160, 550 - offset))
 
     window.set_clip(None)
     # step 1: draw a progress bar near the top — use pygame.draw.rect twice: once grey for the track, once green for the fill

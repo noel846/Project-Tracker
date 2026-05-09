@@ -1,0 +1,179 @@
+PROJECT TRACKER - CODE EXPLANATION
+====================================
+
+LINES 1-10: Imports & Init
+---------------------------
+Imports pygame (the graphics/window library), sys (for exiting), subprocess (not used yet),
+ctypes (for low-level OS calls), and platform (to detect the OS).
+pygame.init() starts up all pygame systems.
+IS_WINDOWS detects whether the app is running on Windows or Linux.
+On Windows, ctypes.wintypes is imported for native window move/resize via the Windows API.
+On Linux, pygame._sdl2 and libSDL2 are imported instead to handle the same operations cross-platform.
+
+LINES 12-13: Window Setup
+--------------------------
+Creates a 600x600 pixel window with no frame (no title bar or borders — we draw our own).
+Sets the window title to "project tracker".
+
+LINES 15-20: Project Data
+--------------------------
+A list of 3 projects. Each project is a dictionary with a name, status, list of tags,
+and a progress value between 0 and 1 (so 0.50 = 50% done).
+
+LINES 22-24: Fonts
+-------------------
+Loads two sizes of the Arial font — small (16px) for most text, big (20px) for headings.
+
+LINES 25-42: Layout & State Variables
+--------------------------------------
+SIDEBAR_X = 150: the sidebar takes up the left 150 pixels.
+win_w, win_h: the current window width and height.
+panel_w: the width of the main content area (window width minus sidebar).
+run: keeps the main loop going — set to False to quit.
+offset: how far the content has been scrolled down.
+dragging, drag_offset_x/y: tracks whether the user is dragging the window and where they grabbed it.
+resizing_right, resizing_bottom: tracks whether the user is resizing from the right or bottom edge.
+resize_start_w/h, resize_delta_x/y: on Linux, stores the window size at the start of a resize
+  and accumulates how far the mouse has moved, so the final size can be applied on mouse release.
+drag_start_win_x/y, drag_start_abs_x/y: on Linux, stores the window position and absolute cursor
+  position at the moment dragging starts, so the window can follow the cursor correctly.
+
+LINE 43: Main Loop
+-------------------
+Everything from here to the end runs ~60 times per second (once per frame).
+
+LINE 44: Frame Rate Limiter
+----------------------------
+Pauses for 16 milliseconds each frame, giving roughly 60 frames per second.
+
+LINES 45-47: Clickable Zones
+------------------------------
+close_rect: a small rectangle in the top-right corner — clicking it closes the app.
+right_edge: a thin strip along the right side of the window — used to detect resize dragging.
+bottom_edge: a thin strip along the bottom — same idea for vertical resizing.
+
+LINES 49-50: Windows Handle
+-----------------------------
+On Windows only, gets the native window handle (hwnd) — a low-level ID used by the
+Windows API to move and resize the window via ctypes.
+
+LINES 51-131: Event Handling
+------------------------------
+Loops through all events that happened since the last frame:
+
+  Lines 52-53 (QUIT): If the user closes the window normally, stop the loop.
+
+  Lines 54-55 (KEYDOWN): A key was pressed — no action yet (placeholder for future keyboard logic).
+
+  Lines 56-62 (MOUSEWHEEL): Scrolling the mouse wheel moves content up or down by 20 pixels per
+  tick, but only when the mouse is over the main panel (not the sidebar). The offset is clamped
+  so it can't go above 0 (can't scroll past the top) or past the bottom of the content.
+
+  Lines 64-84 (MOUSEBUTTONDOWN): On a click:
+    - If the X button was clicked, quit.
+    - If the right edge was clicked, start resizing horizontally.
+    - If the bottom edge was clicked, start resizing vertically.
+    - If the click was in the title bar area (top 35px), start dragging the window.
+      On Linux, also records the absolute cursor position and window position so
+      dragging can be calculated correctly.
+
+  Lines 85-114 (MOUSEMOTION): While the mouse is moving:
+    - If not doing anything special, change the cursor to a resize arrow when hovering
+      over the window edges, or back to the normal arrow otherwise.
+    - If resizing right/bottom on Windows: uses the Windows API to stretch the window live.
+      On Linux: accumulates how far the mouse has moved but doesn't resize until mouse up.
+    - If dragging on Windows: uses the Windows API to move the window to follow the cursor.
+      On Linux: uses SDL2 to get the absolute cursor position and moves the window accordingly.
+
+  Lines 115-131 (MOUSEBUTTONUP): When the mouse button is released:
+    - If a resize just finished on Windows: reads the final size from the Windows API and applies it.
+      On Linux: adds the accumulated mouse delta to the starting window size to get the final size.
+      Both enforce a minimum size of 200x100.
+    - Reset all drag/resize flags and restore the normal cursor.
+
+LINES 133-142: Recalculate Layout
+-----------------------------------
+After handling events, recalculate win_w/win_h (in case the window was resized),
+then work out panel dimensions. Also reads the progress value for the selected project
+(currently always project 0) and calculates how wide the progress bar fill should be.
+
+LINE 145: Background Fill
+--------------------------
+Fills the whole window with an off-white/cream color (Windows XP desktop beige).
+
+LINES 147-157: Title Bar Gradient
+-----------------------------------
+Draws the blue gradient title bar (like classic Windows XP). It splits the bar into
+30 vertical strips and gradually shifts the color from dark navy blue on the left
+to light sky blue on the right. Then draws a thin highlight line at the very top.
+
+LINE 160: Title Text
+---------------------
+Draws the "project tracker" text in white on the title bar.
+
+LINE 163: Sidebar Background
+------------------------------
+Fills the left sidebar area with XP silver/grey.
+
+LINE 166: Main Panel Background
+---------------------------------
+Fills the main content area (right of sidebar) with white.
+
+LINES 169-172: Window Border
+------------------------------
+Draws a beveled border around the whole window — white on the top/left edges,
+dark grey on the bottom/right edges. This gives the classic raised 3D Windows look.
+
+LINES 175-176: Sidebar/Panel Divider
+--------------------------------------
+Draws a thin beveled vertical line between the sidebar and the main panel.
+
+LINES 179-181: Sidebar Horizontal Divider
+-------------------------------------------
+Draws a beveled horizontal line across the sidebar, splitting it into a top half
+(for projects/statuses) and a bottom half (for tags). Placed at 3/5 of the window height.
+
+LINES 183-184: Close Button
+-----------------------------
+Draws a red rectangle for the close button and puts an "X" on it.
+
+LINES 186-192: Sidebar Project List
+-------------------------------------
+Hardcodes folder and project names into the sidebar. These are just static text labels
+for now — they don't react to clicks or reflect the actual projects list yet.
+
+LINES 195-207: Sidebar Tags Section
+-------------------------------------
+Collects all unique tags from every project into a set (so no duplicates),
+then draws each tag name in the bottom half of the sidebar, spaced 20px apart.
+
+LINES 209-215: Clip Region & Fade Lines
+-----------------------------------------
+Sets a clipping rectangle so that anything drawn outside the main panel is invisible
+(prevents content from overlapping the sidebar or title bar while scrolling).
+Then draws subtle blue horizontal fade lines at fixed positions in the panel —
+these act as visual dividers between sections. The color fades out to the right.
+
+LINES 217-240: Main Panel Content
+-----------------------------------
+Draws all the content for the selected project inside the main panel:
+- Project name in large text at the top.
+- "tags", "notes / todos", "files", and "links" section labels.
+- Three beveled XP-style boxes for tags, notes/todos, and files.
+  Each box is filled with XP grey (212, 208, 200) and has a double-bevel border:
+    outer dark grey + inner darker grey on the top and left edges (shadow),
+    outer white + inner XP grey on the bottom and right edges (highlight).
+  This matches the sunken panel look used throughout the rest of the UI.
+All content is offset vertically by the scroll amount so it moves when you scroll.
+
+LINE 241: Remove Clip Region
+------------------------------
+Turns off the clipping rectangle so anything drawn after this isn't restricted.
+
+LINE 249: Update Display
+-------------------------
+Pushes everything drawn this frame to the screen. Without this, nothing would appear.
+
+LINES 250-251: Cleanup
+-----------------------
+When the loop ends (run = False), shuts down pygame and exits the program cleanly.
