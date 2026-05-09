@@ -1,30 +1,31 @@
 PROJECT TRACKER - CODE EXPLANATION
 ====================================
 
-LINES 1-10: Imports & Init
+LINES 1-16: Imports & Init
 ---------------------------
-Imports pygame (the graphics/window library), sys (for exiting), subprocess (not used yet),
+Imports pygame (graphics/window library), sys (for exiting), subprocess (for restarting the app),
 ctypes (for low-level OS calls), and platform (to detect the OS).
 pygame.init() starts up all pygame systems.
 IS_WINDOWS detects whether the app is running on Windows or Linux.
 On Windows, ctypes.wintypes is imported for native window move/resize via the Windows API.
-On Linux, pygame._sdl2 and libSDL2 are imported instead to handle the same operations cross-platform.
+On Linux, pygame._sdl2 and libSDL2 are imported to handle the same operations cross-platform.
 
-LINES 12-13: Window Setup
+LINES 18-20: Window Setup
 --------------------------
 Creates a 600x600 pixel window with no frame (no title bar or borders — we draw our own).
 Sets the window title to "project tracker".
 
-LINES 15-20: Project Data
+LINES 22-27: Project Data
 --------------------------
 A list of 3 projects. Each project is a dictionary with a name, status, list of tags,
 and a progress value between 0 and 1 (so 0.50 = 50% done).
 
-LINES 22-24: Fonts
+LINES 29-31: Fonts
 -------------------
-Loads two sizes of the Arial font — small (16px) for most text, big (20px) for headings.
+Loads two sizes of the Tahoma font — small (13px) for most text, big (16px) for headings.
+Tahoma is the font Windows XP used throughout its UI.
 
-LINES 25-42: Layout & State Variables
+LINES 33-56: Layout & State Variables
 --------------------------------------
 SIDEBAR_X = 150: the sidebar takes up the left 150 pixels.
 win_w, win_h: the current window width and height.
@@ -38,46 +39,50 @@ resize_start_w/h, resize_delta_x/y: on Linux, stores the window size at the star
 drag_start_win_x/y, drag_start_abs_x/y: on Linux, stores the window position and absolute cursor
   position at the moment dragging starts, so the window can follow the cursor correctly.
 
-LINE 43: Main Loop
+LINE 62: Main Loop
 -------------------
 Everything from here to the end runs ~60 times per second (once per frame).
 
-LINE 44: Frame Rate Limiter
+LINE 63: Frame Rate Limiter
 ----------------------------
 Pauses for 16 milliseconds each frame, giving roughly 60 frames per second.
 
-LINES 45-47: Clickable Zones
+LINES 65-68: Clickable Zones
 ------------------------------
 close_rect: a small rectangle in the top-right corner — clicking it closes the app.
+refresh_rect: the blue button just to the left of close — clicking it restarts the app.
 right_edge: a thin strip along the right side of the window — used to detect resize dragging.
 bottom_edge: a thin strip along the bottom — same idea for vertical resizing.
 
-LINES 49-50: Windows Handle
+LINES 70-71: Windows Handle
 -----------------------------
 On Windows only, gets the native window handle (hwnd) — a low-level ID used by the
 Windows API to move and resize the window via ctypes.
 
-LINES 51-131: Event Handling
+LINES 73-174: Event Handling
 ------------------------------
 Loops through all events that happened since the last frame:
 
-  Lines 52-53 (QUIT): If the user closes the window normally, stop the loop.
+  QUIT: If the user closes the window normally, stop the loop.
 
-  Lines 54-55 (KEYDOWN): A key was pressed — no action yet (placeholder for future keyboard logic).
+  KEYDOWN: A key was pressed — no action yet (placeholder for future keyboard logic).
 
-  Lines 56-62 (MOUSEWHEEL): Scrolling the mouse wheel moves content up or down by 20 pixels per
+  MOUSEWHEEL: Scrolling the mouse wheel moves content up or down by 20 pixels per
   tick, but only when the mouse is over the main panel (not the sidebar). The offset is clamped
   so it can't go above 0 (can't scroll past the top) or past the bottom of the content.
 
-  Lines 64-84 (MOUSEBUTTONDOWN): On a click:
+  MOUSEBUTTONDOWN: On a left click:
     - If the X button was clicked, quit.
+    - If the R button was clicked, launch a new copy of the script with subprocess.Popen
+      (Popen doesn't block — it starts the new window and immediately moves on),
+      then set run = False to close the current window.
     - If the right edge was clicked, start resizing horizontally.
     - If the bottom edge was clicked, start resizing vertically.
     - If the click was in the title bar area (top 35px), start dragging the window.
       On Linux, also records the absolute cursor position and window position so
       dragging can be calculated correctly.
 
-  Lines 85-114 (MOUSEMOTION): While the mouse is moving:
+  MOUSEMOTION: While the mouse is moving:
     - If not doing anything special, change the cursor to a resize arrow when hovering
       over the window edges, or back to the normal arrow otherwise.
     - If resizing right/bottom on Windows: uses the Windows API to stretch the window live.
@@ -85,95 +90,73 @@ Loops through all events that happened since the last frame:
     - If dragging on Windows: uses the Windows API to move the window to follow the cursor.
       On Linux: uses SDL2 to get the absolute cursor position and moves the window accordingly.
 
-  Lines 115-131 (MOUSEBUTTONUP): When the mouse button is released:
+  MOUSEBUTTONUP: When the mouse button is released:
     - If a resize just finished on Windows: reads the final size from the Windows API and applies it.
       On Linux: adds the accumulated mouse delta to the starting window size to get the final size.
       Both enforce a minimum size of 200x100.
     - Reset all drag/resize flags and restore the normal cursor.
 
-LINES 133-142: Recalculate Layout
+LINES 176-189: Recalculate Layout
 -----------------------------------
 After handling events, recalculate win_w/win_h (in case the window was resized),
 then work out panel dimensions. Also reads the progress value for the selected project
 (currently always project 0) and calculates how wide the progress bar fill should be.
+progress_W is capped at panel_w-22 so the green fill never overflows the grey track.
 
-LINE 145: Background Fill
---------------------------
-Fills the whole window with an off-white/cream color (Windows XP desktop beige).
+LINES 191-212: Draw — Background
+----------------------------------
+Fills the whole window with the XP cream color, then draws the blue gradient title bar
+(30 vertical strips shifting from dark navy on the left to light sky blue on the right),
+a thin highlight line at the very top, the title text, and fills the sidebar and main panel.
 
-LINES 147-157: Title Bar Gradient
------------------------------------
-Draws the blue gradient title bar (like classic Windows XP). It splits the bar into
-30 vertical strips and gradually shifts the color from dark navy blue on the left
-to light sky blue on the right. Then draws a thin highlight line at the very top.
-
-LINE 160: Title Text
----------------------
-Draws the "project tracker" text in white on the title bar.
-
-LINE 163: Sidebar Background
+LINES 214-247: Draw — Chrome
 ------------------------------
-Fills the left sidebar area with XP silver/grey.
+Draws the outer window border (raised bevel: white top/left, dark bottom/right),
+the beveled vertical divider between sidebar and panel, the beveled horizontal divider
+that splits the sidebar into projects (top) and tags (bottom), the red close button with
+an "X", and the blue refresh button with an "R". Both buttons center their label using
+the text surface's width and height.
 
-LINE 166: Main Panel Background
----------------------------------
-Fills the main content area (right of sidebar) with white.
+LINES 255-280: Draw — Sidebar
+-------------------------------
+Hardcodes folder and project names into the sidebar as static text labels.
+Then collects all unique tags from every project into a set (so no duplicates)
+and draws each tag name in the bottom half of the sidebar, spaced 20px apart.
 
-LINES 169-172: Window Border
-------------------------------
-Draws a beveled border around the whole window — white on the top/left edges,
-dark grey on the bottom/right edges. This gives the classic raised 3D Windows look.
-
-LINES 175-176: Sidebar/Panel Divider
---------------------------------------
-Draws a thin beveled vertical line between the sidebar and the main panel.
-
-LINES 179-181: Sidebar Horizontal Divider
--------------------------------------------
-Draws a beveled horizontal line across the sidebar, splitting it into a top half
-(for projects/statuses) and a bottom half (for tags). Placed at 3/5 of the window height.
-
-LINES 183-184: Close Button
------------------------------
-Draws a red rectangle for the close button and puts an "X" on it.
-
-LINES 186-192: Sidebar Project List
--------------------------------------
-Hardcodes folder and project names into the sidebar. These are just static text labels
-for now — they don't react to clicks or reflect the actual projects list yet.
-
-LINES 195-207: Sidebar Tags Section
--------------------------------------
-Collects all unique tags from every project into a set (so no duplicates),
-then draws each tag name in the bottom half of the sidebar, spaced 20px apart.
-
-LINES 209-215: Clip Region & Fade Lines
+LINES 282-299: Clip Region & Fade Lines
 -----------------------------------------
 Sets a clipping rectangle so that anything drawn outside the main panel is invisible
-(prevents content from overlapping the sidebar or title bar while scrolling).
-Then draws subtle blue horizontal fade lines at fixed positions in the panel —
-these act as visual dividers between sections. The color fades out to the right.
+(prevents scrolling content from overlapping the sidebar or title bar).
+Then draws 4 horizontal divider lines, each fading from blue on the left to white on the right.
+Each line is 3px tall and fades over a set pixel distance — shorter fades for the tag area,
+longer fades for the notes and files sections.
 
-LINES 217-240: Main Panel Content
------------------------------------
-Draws all the content for the selected project inside the main panel:
-- Project name in large text at the top.
-- "tags", "notes / todos", "files", and "links" section labels.
-- Three beveled XP-style boxes for tags, notes/todos, and files.
-  Each box is filled with XP grey (212, 208, 200) and has a double-bevel border:
-    outer dark grey + inner darker grey on the top and left edges (shadow),
-    outer white + inner XP grey on the bottom and right edges (highlight).
-  This matches the sunken panel look used throughout the rest of the UI.
-All content is offset vertically by the scroll amount so it moves when you scroll.
+LINES 301-306: Section Labels
+-------------------------------
+Draws the project name in large text, and the "tags", "notes / todos", "files", "links"
+section labels. All y positions subtract offset so they move when you scroll.
 
-LINE 241: Remove Clip Region
-------------------------------
-Turns off the clipping rectangle so anything drawn after this isn't restricted.
+LINES 308-365: Boxes & Combobox
+---------------------------------
+The bevel recipe comment explains the technique used for all the boxes below it.
+Notes/todos and files boxes use a double sunken bevel — grey + black on top/left (shadow),
+white + XP grey on bottom/right (highlight) — to look like classic 90s text input areas.
+The tags combobox has the same sunken border for the text area, plus a raised dropdown button
+on the right side with a small filled triangle arrow centered inside it.
 
-LINE 249: Update Display
+LINES 367-390: Draw — Progress Bar
+-------------------------------------
+Draws the progress bar inside the clip region so it scrolls with the content.
+Four helper variables (bt, bb, bf, bfb) hold the y positions of the track top/bottom and
+fill top/bottom, all already adjusted by offset, so the bevel lines stay in sync.
+The grey track uses a sunken bevel (dark top/left, white bottom/right).
+The green fill uses a raised bevel with dark green shadows (0,100,0) on the bottom and right
+so the edges contrast clearly against the grey track instead of blending into it.
+
+LINE 392: Update Display
 -------------------------
 Pushes everything drawn this frame to the screen. Without this, nothing would appear.
 
-LINES 250-251: Cleanup
+LINES 394-395: Cleanup
 -----------------------
 When the loop ends (run = False), shuts down pygame and exits the program cleanly.
