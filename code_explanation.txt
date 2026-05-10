@@ -1,6 +1,73 @@
 PROJECT TRACKER - CODE EXPLANATION
 ====================================
 
+BEVEL RECIPE
+-------------
+A bevel makes a flat rectangle look 3D by drawing coloured lines along its edges.
+Think of light hitting from the top-left — top and left sides are bright, bottom and right are in shadow.
+
+Sunken (like a text input — looks pushed into the screen):
+  top and left edges = dark,  bottom and right edges = white
+
+Raised (like a button — looks popping out of the screen):
+  top and left edges = white,  bottom and right edges = dark
+
+To draw it: after pygame.draw.rect, use pygame.draw.line along each of the 4 edges.
+  top edge:    top-left corner  → top-right corner
+  left edge:   top-left corner  → bottom-left corner
+  bottom edge: bottom-left      → bottom-right
+  right edge:  top-right        → bottom-right
+
+Double bevel = draw two lines per edge, the second 1px inside the first with a slightly different shade.
+The notes/todos and files boxes use: grey + black on top/left (shadow), white + XP-grey on bottom/right (highlight).
+
+
+VARIABLE GLOSSARY
+------------------
+General naming pattern:
+  x, y    = position (left edge, top edge)
+  w, h    = size (width, height)
+  r, t, b = right / top / bottom edge (a single coordinate, not a size)
+
+Layout:
+  title_h      — height of the title bar (30px)
+  SIDEBAR_X    — x where the sidebar ends and the main panel begins (150px)
+  panel_w / pw — width of the main panel (window width minus sidebar)
+  divider_y    — y of the horizontal line splitting sidebar into projects (top) and tags (bottom)
+  offset       — how many pixels the main panel content has been scrolled down
+
+Box sizing (used in loops that draw project/tag boxes):
+  text_w, text_h — pixel width and height of a piece of text, from font.size()
+  rw, rh         — width and height of a bevel box: text size + a few pixels of padding
+
+Plus buttons:
+  px, py   — position of a + button (top-left corner)
+  pbw      — width of the projects + button  (pbw_t for the tags one)
+
+Progress bar:
+  bar_h      — height of the grey track
+  progress_W — pixel width of the green fill (track width × progress value)
+  bt, bb     — y of the track's top and bottom bevel lines (already adjusted for scroll offset)
+  bf, bfb    — y of the fill's top and bottom bevel lines (same idea, 2px inside the track)
+
+Combobox (the tags dropdown):
+  cx, cy, cw, ch — x, y, width, height of the whole combobox
+  btn            — width of the small dropdown button on the right side
+  bx             — x where the dropdown button starts (cx + cw - btn)
+  ax, ay         — center point of the triangle arrow inside the button
+
+Fade divider lines:
+  line_y     — y position of a section divider line
+  fade_dist  — how many pixels the line fades over (shorter = sharper, longer = softer)
+  xi         — current x pixel being drawn as the fade loop steps across
+
+Resize / drag state:
+  resize_start_w/h  — window size at the moment a resize began
+  resize_delta_x/y  — how far the mouse has moved since the resize started (Linux only)
+  drag_start_win_x/y  — window position when dragging started
+  drag_start_abs_x/y  — absolute screen cursor position when dragging started
+
+
 LINES 1-16: Imports & Init
 ---------------------------
 Imports pygame (graphics/window library), sys (for exiting), subprocess (for restarting the app),
@@ -15,10 +82,12 @@ LINES 18-20: Window Setup
 Creates a 600x600 pixel window with no frame (no title bar or borders — we draw our own).
 Sets the window title to "project tracker".
 
-LINES 22-27: Project Data
+LINES 22-29: Project Data
 --------------------------
 A list of 3 projects. Each project is a dictionary with a name, status, list of tags,
 and a progress value between 0 and 1 (so 0.50 = 50% done).
+all_tags is a standalone list of every tag — independent of projects so tags can be
+added/removed without touching the project data.
 
 LINES 29-31: Fonts
 -------------------
@@ -76,6 +145,7 @@ Loops through all events that happened since the last frame:
     - If the R button was clicked, launch a new copy of the script with subprocess.Popen
       (Popen doesn't block — it starts the new window and immediately moves on),
       then set run = False to close the current window.
+    - If the projects + button was clicked, append a new blank project to the list.
     - If the right edge was clicked, start resizing horizontally.
     - If the bottom edge was clicked, start resizing vertically.
     - If the click was in the title bar area (top 35px), start dragging the window.
@@ -117,34 +187,34 @@ that splits the sidebar into projects (top) and tags (bottom), the red close but
 an "X", and the blue refresh button with an "R". Both buttons center their label using
 the text surface's width and height.
 
-LINES 255-280: Draw — Sidebar
+LINES 262-318: Draw — Sidebar
 -------------------------------
-Hardcodes folder and project names into the sidebar as static text labels.
-Then collects all unique tags from every project into a set (so no duplicates)
-and draws each tag name in the bottom half of the sidebar, spaced 20px apart.
+Projects section: loops over the projects list and draws each one as a sunken beveled box.
+After the loop, draws a fixed "+" button in the top-right corner — clicking it appends a new project.
+Tags section: loops over all_tags and draws each tag the same way.
+After that loop, draws a second "+" button in the corner of the tags section — clicking it appends a new tag.
+Both + buttons are raised bevel (opposite of the project/tag boxes) so they look pressable.
 
-LINES 282-299: Clip Region & Fade Lines
+LINES 320-336: Clip Region & Fade Lines
 -----------------------------------------
 Sets a clipping rectangle so that anything drawn outside the main panel is invisible
 (prevents scrolling content from overlapping the sidebar or title bar).
 Then draws 4 horizontal divider lines, each fading from blue on the left to white on the right.
-Each line is 3px tall and fades over a set pixel distance — shorter fades for the tag area,
-longer fades for the notes and files sections.
+Each line is 3px tall. Layout rule: label → divider (+17px) → content (+5px) → next label (+20px).
 
-LINES 301-306: Section Labels
+LINES 338-343: Section Labels
 -------------------------------
 Draws the project name in large text, and the "tags", "notes / todos", "files", "links"
 section labels. All y positions subtract offset so they move when you scroll.
 
-LINES 308-365: Boxes & Combobox
+LINES 345-383: Boxes & Combobox
 ---------------------------------
-The bevel recipe comment explains the technique used for all the boxes below it.
 Notes/todos and files boxes use a double sunken bevel — grey + black on top/left (shadow),
 white + XP grey on bottom/right (highlight) — to look like classic 90s text input areas.
 The tags combobox has the same sunken border for the text area, plus a raised dropdown button
 on the right side with a small filled triangle arrow centered inside it.
 
-LINES 367-390: Draw — Progress Bar
+LINES 385-408: Draw — Progress Bar
 -------------------------------------
 Draws the progress bar inside the clip region so it scrolls with the content.
 Four helper variables (bt, bb, bf, bfb) hold the y positions of the track top/bottom and
@@ -153,10 +223,11 @@ The grey track uses a sunken bevel (dark top/left, white bottom/right).
 The green fill uses a raised bevel with dark green shadows (0,100,0) on the bottom and right
 so the edges contrast clearly against the grey track instead of blending into it.
 
-LINE 392: Update Display
+LINE 410: Update Display
 -------------------------
-Pushes everything drawn this frame to the screen. Without this, nothing would appear.
+Resets the clip region so the sidebar draws correctly next frame, then pushes everything
+drawn this frame to the screen. Without this, nothing would appear.
 
-LINES 394-395: Cleanup
+LINES 414-415: Cleanup
 -----------------------
 When the loop ends (run = False), shuts down pygame and exits the program cleanly.

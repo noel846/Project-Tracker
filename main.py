@@ -26,6 +26,9 @@ projects = [
     {"name": "project3", "status": "deadline", "tags": ["tag3"], "progress": 0.01},
 ]
 
+all_tags = ["tag1", "tag2", "tag3"]
+
+
 # --- fonts ---
 font_small = pygame.font.SysFont("tahoma", 13)
 font_big   = pygame.font.SysFont("tahoma", 16)
@@ -38,6 +41,10 @@ win_w, win_h   = window.get_size()
 panel_w        = win_w - SIDEBAR_X
 run            = True
 offset         = 0
+selected     = 0
+# STEP 1 of 4 — add a selected index here so it persists between frames
+# selected = 0  (means project 0 is highlighted by default)
+# right now selected lives in the layout section and resets every frame, so clicks can't change it
 
 dragging       = False
 drag_offset_x  = 0
@@ -47,6 +54,9 @@ drag_start_win_x = 0
 drag_start_win_y = 0
 drag_start_abs_x = 0
 drag_start_abs_y = 0
+
+plus_projects_rect = pygame.Rect(0, 0, 0, 0)
+plus_tags_rect     = pygame.Rect(0, 0, 0, 0)
 
 resizing_right   = False
 resizing_bottom  = False
@@ -86,8 +96,8 @@ while run:
                 offset -= event.y * 20
                 if offset < 0:
                     offset = 0
-                if offset > 800 - win_h:
-                    offset = 800 - win_h
+                if offset > 925 - win_h:
+                    offset = 925 - win_h
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if close_rect.collidepoint(event.pos) and event.button == 1:
@@ -96,6 +106,16 @@ while run:
             if refresh_rect.collidepoint(event.pos) and event.button == 1:
                 subprocess.Popen(["python3", sys.argv[0]])
                 run = False
+
+            if plus_projects_rect.collidepoint(event.pos) and event.button == 1:
+                projects.append({"name": "new project", "status": "", "tags": [], "progress": 0.00})
+
+            # STEP 3 of 4 — check each project rect for clicks
+            # loop through project_rects (the list you built in step 2)
+            # if project_rects[i].collidepoint(event.pos): selected = i
+
+            if plus_tags_rect.collidepoint(event.pos) and event.button == 1:
+                all_tags.append("new tag")
 
             if right_edge.collidepoint(event.pos):
                 resizing_right = True
@@ -183,9 +203,8 @@ while run:
     pw           = win_w - SIDEBAR_X
     title_h      = 30
     bar_h        = 10
-    selected     = 0
     progress     = projects[selected]["progress"]
-    progress_W   = (panel_w - 22) * progress
+    progress_W   = (panel_w - 12) * progress
 
     # -------------------------------------------------------------------------
     # draw — background
@@ -246,12 +265,20 @@ while run:
     ))
 
     # -------------------------------------------------------------------------
-    # draw — sidebar
+    # draw — sidebar: projects
     # -------------------------------------------------------------------------
+    # STEP 2 of 4 — build a list of rects, one per project, so MOUSEBUTTONDOWN can check them
+    project_rect = []
+    # before the loop: project_rects = []
+    # inside the loop: project_rects.append(pygame.Rect(10, y, rw, rh))
+    # STEP 4 of 4 — swap the bevel based on whether this project is selected
+    # instead of always drawing sunken, check: if projects.index(project) == selected → draw raised
+    # raised = white top+left, dark bottom+right (flip the line colours)
     y = 38
     for project in projects:
         text_w, text_h = font_small.size(project["name"])
         rw, rh = text_w + 6, text_h + 4
+        project_rect.append(pygame.Rect(10, y, rw, rh))
         pygame.draw.rect(window, (212, 208, 200), (10, y, rw, rh))
         pygame.draw.line(window, (128, 128, 128), (10,      y),      (10+rw-1, y),      1)
         pygame.draw.line(window, (128, 128, 128), (10,      y),      (10,      y+rh-1), 1)
@@ -260,14 +287,26 @@ while run:
         window.blit(font_small.render(project["name"], True, (0, 0, 0)), (13, y + 2))
         y += rh + 4
 
-    # sidebar tags section
-    tags = set()
-    for project in projects:
-        for tag in project["tags"]:
-            tags.add(tag)
+    # projects + button (fixed position, top-right corner of sidebar)
+    pbw = rh * 2
+    px, py = SIDEBAR_X - pbw - 5, title_h + 5
+    pygame.draw.rect(window, (212, 208, 200), (px, py, pbw, rh))
+    pygame.draw.line(window, (255, 255, 255), (px,       py),      (px+pbw-1, py),      1)
+    pygame.draw.line(window, (255, 255, 255), (px,       py),      (px,       py+rh-1), 1)
+    pygame.draw.line(window, (128, 128, 128), (px,       py+rh-1), (px+pbw-1, py+rh-1), 1)
+    pygame.draw.line(window, (128, 128, 128), (px+pbw-1, py),      (px+pbw-1, py+rh-1), 1)
+    plus_projects_rect = pygame.Rect(px, py, pbw, rh)
+    plus_text = font_small.render("+", True, (0, 0, 0))
+    window.blit(plus_text, (
+        plus_projects_rect.centerx - plus_text.get_width()  // 2,
+        plus_projects_rect.centery - plus_text.get_height() // 2,
+    ))
 
+    # -------------------------------------------------------------------------
+    # draw — sidebar: tags
+    # -------------------------------------------------------------------------
     y = win_h * 3 // 5 + 10
-    for tag in tags:
+    for tag in all_tags:
         text_w, text_h = font_small.size(tag)
         rw, rh = text_w + 6, text_h + 4
         pygame.draw.rect(window, (212, 208, 200), (10, y, rw, rh))
@@ -277,8 +316,21 @@ while run:
         pygame.draw.line(window, (255, 255, 255), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
         window.blit(font_small.render(tag, True, (0, 0, 0)), (13, y + 2))
         y += rh + 4
-    # TODO: add a "+" at the bottom of the tags list to create a new tag on click
-    # hint: draw a "+" with window.blit, then check if it was clicked in the MOUSEBUTTONDOWN section
+
+    # tags + button (fixed position, top-right corner of tags section)
+    pbw_t = rh * 2
+    px, py = SIDEBAR_X - pbw_t - 5, win_h * 3 // 5 + 5
+    pygame.draw.rect(window, (212, 208, 200), (px, py, pbw_t, rh))
+    pygame.draw.line(window, (255, 255, 255), (px,         py),      (px+pbw_t-1, py),      1)
+    pygame.draw.line(window, (255, 255, 255), (px,         py),      (px,         py+rh-1), 1)
+    pygame.draw.line(window, (128, 128, 128), (px,         py+rh-1), (px+pbw_t-1, py+rh-1), 1)
+    pygame.draw.line(window, (128, 128, 128), (px+pbw_t-1, py),      (px+pbw_t-1, py+rh-1), 1)
+    plus_tags_rect = pygame.Rect(px, py, pbw_t, rh)
+    plus_text_tag = font_small.render("+", True, (0, 0, 0))
+    window.blit(plus_text_tag, (
+        plus_tags_rect.centerx - plus_text_tag.get_width()  // 2,
+        plus_tags_rect.centery - plus_text_tag.get_height() // 2,
+    ))
 
     # -------------------------------------------------------------------------
     # draw — main panel (clipped so content doesn't overflow into the sidebar)
@@ -286,11 +338,12 @@ while run:
     window.set_clip(pygame.Rect(SIDEBAR_X + 2, title_h, win_w - SIDEBAR_X - 2, win_h - title_h))
 
     # section divider lines — fade from blue to white
+    # layout rule: label → divider (+17px) → content (+5px) → next label (+20px)
     for line_y, fade_dist in [
-        (title_h + 55  - offset, 120),
-        (title_h + 108 - offset, 250),
-        (420            - offset, 250),
-        (570            - offset, 250),
+        (title_h + 55  - offset, 120),   # tags
+        (title_h + 114 - offset, 250),   # notes / todos
+        (title_h + 376 - offset, 250),   # files
+        (title_h + 538 - offset, 250),   # links
     ]:
         for xi in range(SIDEBAR_X + 5, SIDEBAR_X + 5 + fade_dist):
             fade = max(0, 1 - (xi - SIDEBAR_X - 5) / fade_dist)
@@ -300,35 +353,16 @@ while run:
             pygame.draw.rect(window, (r, g, b), (xi, line_y - 1, 1, 3))
 
     # project name and section labels
-    window.blit(font_big.render("project1",     True, (20, 20, 20)), (160, title_h + 15  - offset))
-    window.blit(font_small.render("tags",        True, (80, 80, 80)), (160, title_h + 38  - offset))
-    window.blit(font_small.render("notes / todos", True, (80, 80, 80)), (160, title_h + 83  - offset))
-    window.blit(font_small.render("files",       True, (80, 80, 80)), (160, 398           - offset))
-    window.blit(font_small.render("links",       True, (80, 80, 80)), (160, 550           - offset))
-
-    # --- bevel recipe ---
-    # a bevel makes a flat rectangle look 3D by drawing coloured lines along its edges
-    # think of light hitting from the top-left — top and left sides are bright, bottom and right are in shadow
-    #
-    # sunken (like a text input — looks pushed into the screen):
-    #   top and left edges = dark,  bottom and right edges = bright/white
-    #
-    # raised (like a button — looks popping out of the screen):
-    #   top and left edges = bright/white,  bottom and right edges = dark
-    #
-    # to draw it: after your pygame.draw.rect, use pygame.draw.line along each of the 4 edges
-    # the top edge goes from the top-left corner to the top-right corner
-    # the left edge goes from the top-left corner to the bottom-left corner
-    # the bottom edge goes from the bottom-left to the bottom-right
-    # the right edge goes from the top-right to the bottom-right
-    #
-    # double bevel = draw two lines per edge, the second one 1px inside the first with a slightly different shade
-    # the boxes below use: grey + black on top/left (shadow), white + xp-grey on bottom/right (highlight)
+    window.blit(font_big.render("project1",       True, (20, 20, 20)), (155, title_h + 18  - offset))
+    window.blit(font_small.render("tags",          True, (80, 80, 80)), (155, title_h + 38  - offset))
+    window.blit(font_small.render("notes / todos", True, (80, 80, 80)), (155, title_h + 97  - offset))
+    window.blit(font_small.render("files",         True, (80, 80, 80)), (155, title_h + 359 - offset))
+    window.blit(font_small.render("links",         True, (80, 80, 80)), (155, title_h + 521 - offset))
 
     # notes/todos and files boxes — double sunken bevel
     for rx, ry, rw, rh in [
-        (155, title_h + 115 - offset, 430, 240),
-        (155, 424           - offset, 430, 125),
+        (155, title_h + 119 - offset, 430, 220),
+        (155, title_h + 381 - offset, 430, 120),
     ]:
         pygame.draw.rect(window, (255, 255, 255), (rx + 2, ry + 2, rw - 4, rh - 4))
         pygame.draw.line(window, (128, 128, 128), (rx,      ry),      (rx+rw-1, ry),      1)
@@ -341,7 +375,7 @@ while run:
         pygame.draw.line(window, (212, 208, 200), (rx+rw-2, ry+1),    (rx+rw-2, ry+rh-2), 1)
 
     # tags combobox — sunken text area + raised dropdown button
-    cx, cy, cw, ch = 155, title_h + 57 - offset, 160, 17
+    cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 17
     btn = 18
     pygame.draw.rect(window, (255, 255, 255), (cx + 2, cy + 2, cw - btn - 3, ch - 4))
     pygame.draw.line(window, (128, 128, 128), (cx,       cy),      (cx+cw-1,  cy),      1)
@@ -374,22 +408,23 @@ while run:
     bfb = title_h + 4 + bar_h - 5 - offset
 
     # grey track — sunken bevel
-    pygame.draw.rect(window, (212, 208, 200), (SIDEBAR_X+10, bt, panel_w-20, bar_h))
-    pygame.draw.line(window, (128, 128, 128), (SIDEBAR_X+10,         bt), (SIDEBAR_X+panel_w-10, bt), 1)
-    pygame.draw.line(window, (128, 128, 128), (SIDEBAR_X+10,         bt), (SIDEBAR_X+10,         bb), 1)
-    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+10,         bb), (SIDEBAR_X+panel_w-10, bb), 1)
-    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+panel_w-10, bt), (SIDEBAR_X+panel_w-10, bb), 1)
+    pygame.draw.rect(window, (212, 208, 200), (SIDEBAR_X+5, bt, panel_w-10, bar_h))
+    pygame.draw.line(window, (128, 128, 128), (SIDEBAR_X+5,         bt), (SIDEBAR_X+panel_w-5, bt), 1)
+    pygame.draw.line(window, (128, 128, 128), (SIDEBAR_X+5,         bt), (SIDEBAR_X+5,         bb), 1)
+    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+5,         bb), (SIDEBAR_X+panel_w-5, bb), 1)
+    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+panel_w-5, bt), (SIDEBAR_X+panel_w-5, bb), 1)
 
     # green fill — raised bevel
-    pygame.draw.rect(window, (0, 165, 0), (SIDEBAR_X+12, bf, progress_W, bar_h-4))
-    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+12,            bf),  (SIDEBAR_X+12+progress_W, bf),  1)
-    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+12,            bf),  (SIDEBAR_X+12,            bfb), 1)
-    pygame.draw.line(window, (0,   100,  0),  (SIDEBAR_X+12,            bfb), (SIDEBAR_X+12+progress_W, bfb), 1)
-    pygame.draw.line(window, (0,   100,  0),  (SIDEBAR_X+12+progress_W, bf),  (SIDEBAR_X+12+progress_W, bfb), 1)
+    pygame.draw.rect(window, (0, 165, 0), (SIDEBAR_X+7, bf, progress_W, bar_h-4))
+    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+7,            bf),  (SIDEBAR_X+7+progress_W, bf),  1)
+    pygame.draw.line(window, (255, 255, 255), (SIDEBAR_X+7,            bf),  (SIDEBAR_X+7,            bfb), 1)
+    pygame.draw.line(window, (0,   100,  0),  (SIDEBAR_X+7,            bfb), (SIDEBAR_X+7+progress_W, bfb), 1)
+    pygame.draw.line(window, (0,   100,  0),  (SIDEBAR_X+7+progress_W, bf),  (SIDEBAR_X+7+progress_W, bfb), 1)
 
     # TODO: show the percentage as a small label above the bar
     # hint: convert progress to a string like "50%" and draw it with window.blit
 
+    window.set_clip(None)
     pygame.display.update()
 
 pygame.quit()
