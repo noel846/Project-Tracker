@@ -22,6 +22,32 @@ Double bevel = draw two lines per edge, the second 1px inside the first with a s
 The notes/todos and files boxes use: grey + black on top/left (shadow), white + XP-grey on bottom/right (highlight).
 
 
+GRADIENT RECIPE
+----------------
+A gradient smoothly shifts from one colour to another across a rectangle.
+pygame has no built-in gradient, so you draw it yourself as a series of thin strips.
+
+Steps:
+  1. Decide how many strips (bands) to split the rectangle into — more bands = smoother.
+  2. Loop from 0 to bands.
+  3. Each iteration, calculate the x position and width of the current strip.
+  4. Calculate the colour for that strip by blending between the start and end colour:
+       value = start + (end - start) * (i / bands)
+     Do this for r, g, and b separately.
+  5. Draw the strip with pygame.draw.rect using that colour.
+
+Example — the title bar goes from dark navy (10, 36, 106) on the left to light blue (166, 202, 240):
+  for i in range(bands):
+      bx = win_w * i // bands
+      bw = win_w * (i + 1) // bands - bx
+      r  = int(10  + (166 - 10)  * i / bands)
+      g  = int(36  + (202 - 36)  * i / bands)
+      b  = int(106 + (240 - 106) * i / bands)
+      pygame.draw.rect(window, (r, g, b), (bx, 0, bw, title_h))
+
+The same pattern works top-to-bottom — just split by y instead of x.
+
+
 VARIABLE GLOSSARY
 ------------------
 General naming pattern:
@@ -39,6 +65,25 @@ Layout:
 Box sizing (used in loops that draw project/tag boxes):
   text_w, text_h — pixel width and height of a piece of text, from font.size()
   rw, rh         — width and height of a bevel box: text size + a few pixels of padding
+
+Loop variables:
+  enumerate(list) — a built-in that gives you both the index AND the item as you loop.
+   instead of:  for item in list          (item only)
+    you write:   for i, item in enumerate(list)  (index + item)
+  i — the index (position number) of the current item in the loop.
+   i=0 means first item, i=1 means second, etc.
+   useful for knowing WHICH item you are on, e.g. to compare with selected.
+
+Text input:
+  typing          — True when the user is currently editing a project name
+  text_buffer     — the letters the user has typed so far
+  last_click_time — the time (in milliseconds) of the last click on a project card
+  last_click_i    — which project was last clicked (used to detect double-click on the same card)
+  name_rect       — a clickable rect around the project name in the main panel
+
+  Double-click works by checking two things at once:
+    1. the same card was clicked twice (last_click_i == i)
+    2. the two clicks were less than 300ms apart (pygame.time.get_ticks() gives the current time in ms)
 
 Plus buttons:
   px, py   — position of a + button (top-left corner)

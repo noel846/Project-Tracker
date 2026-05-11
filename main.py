@@ -21,9 +21,9 @@ pygame.display.set_caption("project tracker")
 
 # --- your project data ---
 projects = [
-    {"name": "project1", "status": "done",     "tags": ["tag1"], "progress": 0.50},
-    {"name": "project2", "status": "on hold",  "tags": ["tag2"], "progress": 0.45},
-    {"name": "project3", "status": "deadline", "tags": ["tag3"], "progress": 0.01},
+    {"name": "project1", "status": "done",     "tags": ["tag1"], "progress": 0.50, "notes": ""},
+    {"name": "project2", "status": "on hold",  "tags": ["tag2"], "progress": 0.45, "notes": ""},
+    {"name": "project3", "status": "deadline", "tags": ["tag3"], "progress": 0.05, "notes": ""},
 ]
 
 all_tags = ["tag1", "tag2", "tag3"]
@@ -42,9 +42,6 @@ panel_w        = win_w - SIDEBAR_X
 run            = True
 offset         = 0
 selected     = 0
-# STEP 1 of 4 — add a selected index here so it persists between frames
-# selected = 0  (means project 0 is highlighted by default)
-# right now selected lives in the layout section and resets every frame, so clicks can't change it
 
 dragging       = False
 drag_offset_x  = 0
@@ -57,6 +54,8 @@ drag_start_abs_y = 0
 
 plus_projects_rect = pygame.Rect(0, 0, 0, 0)
 plus_tags_rect     = pygame.Rect(0, 0, 0, 0)
+close_rect   = pygame.Rect(win_w - 30, 5, 20, 20)
+refresh_rect = pygame.Rect(win_w - 55, 5, 20, 20)
 
 resizing_right   = False
 resizing_bottom  = False
@@ -64,6 +63,15 @@ resize_start_w   = 0
 resize_start_h   = 0
 resize_delta_x   = 0
 resize_delta_y   = 0
+
+typing         = False
+text_buffer    = ""
+saved_name     = ""
+last_click_time = 0
+last_click_i    = -1
+typing_mode = "name"
+name_rect       = pygame.Rect(0, 0, 0, 0)
+note_name_rect  = pygame.Rect(0, 0, 0, 0)
 
 
 # =============================================================================
@@ -89,7 +97,37 @@ while run:
             run = False
 
         if event.type == pygame.KEYDOWN:
-            pass  # FIXME: wire up key handling logic here
+            if typing:
+                if event.key == pygame.K_ESCAPE:
+                    if typing_mode == "name":
+                        projects[selected]["name"] = saved_name
+                    typing = False
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                elif event.key == pygame.K_BACKSPACE:
+                    text_buffer = text_buffer[:-1]
+                    if typing_mode == "note":
+                        projects[selected]["notes"] = text_buffer
+                    # TODO: hold backspace — pygame doesn't repeat keys by default
+                    # call pygame.key.set_repeat(400, 50) once before the loop to enable it
+                    # 400ms delay before repeat starts, 50ms between each repeat
+                elif event.key == pygame.K_RETURN:
+                    if typing_mode == "name":
+                        projects[selected]["name"] = text_buffer
+                        typing = False
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                    elif typing_mode == "note":
+                        text_buffer += "\n"
+                        projects[selected]["notes"] = text_buffer
+                    # TODO: arrow keys — check pygame.K_LEFT, K_RIGHT to move a cursor_pos index
+                    # cursor_pos tracks which character the caret is at
+                    # inserting/deleting should happen at cursor_pos, not always at the end
+                else:
+                    text_buffer += event.unicode
+                    if typing_mode == "note":
+                        projects[selected]["notes"] = text_buffer
+                # TODO: blinking caret — add a variable caret_visible that flips True/False every 500ms
+                # use pygame.time.get_ticks() to check if 500ms has passed since the last flip
+                # draw a small vertical line at the end of the text when caret_visible is True
 
         if event.type == pygame.MOUSEWHEEL:
             if pygame.mouse.get_pos()[0] > SIDEBAR_X:
@@ -100,6 +138,9 @@ while run:
                     offset = 925 - win_h
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            typing = False
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
             if close_rect.collidepoint(event.pos) and event.button == 1:
                 run = False
 
@@ -109,10 +150,30 @@ while run:
 
             if plus_projects_rect.collidepoint(event.pos) and event.button == 1:
                 projects.append({"name": "new project", "status": "", "tags": [], "progress": 0.00})
+                
+            for i, rect in enumerate(project_rect):
+                if rect.collidepoint(event.pos):
+                    now = pygame.time.get_ticks()
+                    if i == last_click_i and now - last_click_time < 300:
+                        typing = True
+                        typing_mode = "name"
+                        saved_name = projects[i]["name"]
+                        text_buffer = ""
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+                    selected = i
+                    last_click_time = now
+                    last_click_i = i
 
-            # STEP 3 of 4 — check each project rect for clicks
-            # loop through project_rects (the list you built in step 2)
-            # if project_rects[i].collidepoint(event.pos): selected = i
+            if name_rect.collidepoint(event.pos) and event.button == 1:
+                typing_mode = "name"
+                typing = True
+                text_buffer = projects[selected]["name"]
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+            if note_name_rect.collidepoint(event.pos) and event.button == 1:
+                typing_mode = "note"
+                typing = True
+                text_buffer = projects[selected]["notes"]
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
 
             if plus_tags_rect.collidepoint(event.pos) and event.button == 1:
                 all_tags.append("new tag")
@@ -144,6 +205,8 @@ while run:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
                 elif bottom_edge.collidepoint(event.pos):
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZENS)
+                elif typing:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
                 else:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
@@ -192,7 +255,10 @@ while run:
             dragging        = False
             resizing_right  = False
             resizing_bottom = False
-            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+            if typing:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+            else:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
     # -------------------------------------------------------------------------
     # layout recalculation (must happen after events in case window was resized)
@@ -216,7 +282,7 @@ while run:
     for i in range(bands):
         bx = win_w * i // bands
         bw = win_w * (i + 1) // bands - bx
-        r  = int(10  + (166 - 10)  * i / bands)
+        r  = int(10  + (146 - 10)  * i / bands)
         g  = int(36  + (202 - 36)  * i / bands)
         b  = int(106 + (240 - 106) * i / bands)
         pygame.draw.rect(window, (r, g, b), (bx, 0, bw, title_h))
@@ -267,23 +333,23 @@ while run:
     # -------------------------------------------------------------------------
     # draw — sidebar: projects
     # -------------------------------------------------------------------------
-    # STEP 2 of 4 — build a list of rects, one per project, so MOUSEBUTTONDOWN can check them
     project_rect = []
-    # before the loop: project_rects = []
-    # inside the loop: project_rects.append(pygame.Rect(10, y, rw, rh))
-    # STEP 4 of 4 — swap the bevel based on whether this project is selected
-    # instead of always drawing sunken, check: if projects.index(project) == selected → draw raised
-    # raised = white top+left, dark bottom+right (flip the line colours)
     y = 38
-    for project in projects:
+    for i, project in enumerate(projects):
         text_w, text_h = font_small.size(project["name"])
         rw, rh = text_w + 6, text_h + 4
         project_rect.append(pygame.Rect(10, y, rw, rh))
         pygame.draw.rect(window, (212, 208, 200), (10, y, rw, rh))
-        pygame.draw.line(window, (128, 128, 128), (10,      y),      (10+rw-1, y),      1)
-        pygame.draw.line(window, (128, 128, 128), (10,      y),      (10,      y+rh-1), 1)
-        pygame.draw.line(window, (255, 255, 255), (10,      y+rh-1), (10+rw-1, y+rh-1), 1)
-        pygame.draw.line(window, (255, 255, 255), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
+        if i == selected:
+            pygame.draw.line(window, (255, 255, 255), (10,      y),      (10+rw-1, y),      1)
+            pygame.draw.line(window, (255, 255, 255), (10,      y),      (10,      y+rh-1), 1)
+            pygame.draw.line(window, (128, 128, 128), (10,      y+rh-1), (10+rw-1, y+rh-1), 1)
+            pygame.draw.line(window, (128, 128, 128), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
+        else:
+            pygame.draw.line(window, (128, 128, 128), (10,      y),      (10+rw-1, y),      1)
+            pygame.draw.line(window, (128, 128, 128), (10,      y),      (10,      y+rh-1), 1)
+            pygame.draw.line(window, (255, 255, 255), (10,      y+rh-1), (10+rw-1, y+rh-1), 1)
+            pygame.draw.line(window, (255, 255, 255), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
         window.blit(font_small.render(project["name"], True, (0, 0, 0)), (13, y + 2))
         y += rh + 4
 
@@ -353,8 +419,11 @@ while run:
             pygame.draw.rect(window, (r, g, b), (xi, line_y - 1, 1, 3))
 
     # project name and section labels
-    window.blit(font_big.render("project1",       True, (20, 20, 20)), (155, title_h + 18  - offset))
-    window.blit(font_small.render("tags",          True, (80, 80, 80)), (155, title_h + 38  - offset))
+    name_text = text_buffer if (typing and typing_mode == "name") else projects[selected]["name"]
+    name_surf = font_big.render(name_text, True, (20, 20, 20))
+    window.blit(name_surf, (155, title_h + 18 - offset))
+    name_rect = pygame.Rect(155, title_h + 18 - offset, name_surf.get_width(), name_surf.get_height())
+    window.blit(font_small.render("tags",          True, (80, 80, 80)), (155, title_h + 36  - offset))
     window.blit(font_small.render("notes / todos", True, (80, 80, 80)), (155, title_h + 97  - offset))
     window.blit(font_small.render("files",         True, (80, 80, 80)), (155, title_h + 359 - offset))
     window.blit(font_small.render("links",         True, (80, 80, 80)), (155, title_h + 521 - offset))
@@ -373,6 +442,11 @@ while run:
         pygame.draw.line(window, (212, 208, 200), (rx+1,    ry+rh-2), (rx+rw-2, ry+rh-2), 1)
         pygame.draw.line(window, (255, 255, 255), (rx+rw-1, ry),      (rx+rw-1, ry+rh-1), 1)
         pygame.draw.line(window, (212, 208, 200), (rx+rw-2, ry+1),    (rx+rw-2, ry+rh-2), 1)
+
+    note_name_rect = pygame.Rect(155, title_h + 119 - offset, 430, 220)
+    notes_to_draw = text_buffer if (typing and typing_mode == "note") else projects[selected]["notes"]
+    for note_i, note in enumerate(notes_to_draw.split("\n")):
+        window.blit(font_small.render(note, True, (0, 0, 0)), (160, title_h + 124 + note_i * 16 - offset))
 
     # tags combobox — sunken text area + raised dropdown button
     cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 17
