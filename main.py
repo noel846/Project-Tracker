@@ -72,13 +72,25 @@ last_click_i    = -1
 typing_mode = "name"
 name_rect       = pygame.Rect(0, 0, 0, 0)
 note_name_rect  = pygame.Rect(0, 0, 0, 0)
+caret_visible = False
+caret_timer   = 0
+cursor_pos = 0
 
+
+pygame.key.set_repeat(400, 50)
 
 # =============================================================================
 # main loop
 # =============================================================================
 while run:
     pygame.time.delay(16)
+
+    now = pygame.time.get_ticks()
+    if typing and now - caret_timer >= 500:
+        caret_visible = not caret_visible
+        caret_timer   = now
+    if not typing:
+        caret_visible = False
 
     win_w, win_h = window.get_size()
 
@@ -104,12 +116,13 @@ while run:
                     typing = False
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 elif event.key == pygame.K_BACKSPACE:
-                    text_buffer = text_buffer[:-1]
+                    if cursor_pos > 0:
+                        text_buffer = text_buffer[:cursor_pos - 1] + text_buffer[cursor_pos:]
+                        cursor_pos -= 1
                     if typing_mode == "note":
                         projects[selected]["notes"] = text_buffer
-                    # TODO: hold backspace — pygame doesn't repeat keys by default
-                    # call pygame.key.set_repeat(400, 50) once before the loop to enable it
-                    # 400ms delay before repeat starts, 50ms between each repeat
+                    elif typing_mode == "name":
+                        projects[selected]["name"] = text_buffer
                 elif event.key == pygame.K_RETURN:
                     if typing_mode == "name":
                         projects[selected]["name"] = text_buffer
@@ -118,16 +131,27 @@ while run:
                     elif typing_mode == "note":
                         text_buffer += "\n"
                         projects[selected]["notes"] = text_buffer
-                    # TODO: arrow keys — check pygame.K_LEFT, K_RIGHT to move a cursor_pos index
-                    # cursor_pos tracks which character the caret is at
-                    # inserting/deleting should happen at cursor_pos, not always at the end
+                elif event.key == pygame.K_LEFT:
+                    cursor_pos = cursor_pos - 1
+                    if cursor_pos < 0:
+                        cursor_pos = 0
+                elif event.key == pygame.K_RIGHT:
+                    cursor_pos = cursor_pos + 1
+                    if cursor_pos > len(text_buffer):
+                        cursor_pos = len(text_buffer)
+                    # TODO: arrow keys
+                    # Right now the caret is always at the end of the text.
+                    # To move it, you need a variable called cursor_pos — a number that says
+                    # which character the caret is sitting after (0 = before the first letter).
+                    # When the left arrow is pressed, subtract 1 from cursor_pos (don't go below 0).
+                    # When the right arrow is pressed, add 1 (don't go past the length of text_buffer).
+                    # Then everywhere you draw the caret or add/delete characters, use cursor_pos
+                    # instead of always working from the end.
                 else:
-                    text_buffer += event.unicode
+                    text_buffer = text_buffer[:cursor_pos] + event.unicode + text_buffer[cursor_pos:]
+                    cursor_pos += 1
                     if typing_mode == "note":
                         projects[selected]["notes"] = text_buffer
-                # TODO: blinking caret — add a variable caret_visible that flips True/False every 500ms
-                # use pygame.time.get_ticks() to check if 500ms has passed since the last flip
-                # draw a small vertical line at the end of the text when caret_visible is True
 
         if event.type == pygame.MOUSEWHEEL:
             if pygame.mouse.get_pos()[0] > SIDEBAR_X:
@@ -159,6 +183,7 @@ while run:
                         typing_mode = "name"
                         saved_name = projects[i]["name"]
                         text_buffer = ""
+                        cursor_pos = 0
                         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
                     selected = i
                     last_click_time = now
@@ -168,11 +193,13 @@ while run:
                 typing_mode = "name"
                 typing = True
                 text_buffer = projects[selected]["name"]
+                cursor_pos = len(text_buffer)
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
             if note_name_rect.collidepoint(event.pos) and event.button == 1:
                 typing_mode = "note"
                 typing = True
                 text_buffer = projects[selected]["notes"]
+                cursor_pos = len(text_buffer)
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
 
             if plus_tags_rect.collidepoint(event.pos) and event.button == 1:
@@ -423,6 +450,10 @@ while run:
     name_surf = font_big.render(name_text, True, (20, 20, 20))
     window.blit(name_surf, (155, title_h + 18 - offset))
     name_rect = pygame.Rect(155, title_h + 18 - offset, name_surf.get_width(), name_surf.get_height())
+    if typing and typing_mode == "name" and caret_visible:
+        caret_x = 155 + font_big.size(text_buffer[:cursor_pos])[0]
+        caret_y = title_h + 18 - offset
+        pygame.draw.line(window, (20, 20, 20), (caret_x, caret_y), (caret_x, caret_y + name_surf.get_height() - 1), 1)
     window.blit(font_small.render("tags",          True, (80, 80, 80)), (155, title_h + 36  - offset))
     window.blit(font_small.render("notes / todos", True, (80, 80, 80)), (155, title_h + 97  - offset))
     window.blit(font_small.render("files",         True, (80, 80, 80)), (155, title_h + 359 - offset))
@@ -445,8 +476,15 @@ while run:
 
     note_name_rect = pygame.Rect(155, title_h + 119 - offset, 430, 220)
     notes_to_draw = text_buffer if (typing and typing_mode == "note") else projects[selected]["notes"]
-    for note_i, note in enumerate(notes_to_draw.split("\n")):
+    note_lines = notes_to_draw.split("\n")
+    for note_i, note in enumerate(note_lines):
         window.blit(font_small.render(note, True, (0, 0, 0)), (160, title_h + 124 + note_i * 16 - offset))
+    if typing and typing_mode == "note" and caret_visible:
+        before_cursor = text_buffer[:cursor_pos].split("\n")
+        caret_line    = len(before_cursor) - 1
+        caret_x       = 160 + font_small.size(before_cursor[-1])[0]
+        caret_y       = title_h + 124 + caret_line * 16 - offset
+        pygame.draw.line(window, (0, 0, 0), (caret_x, caret_y), (caret_x, caret_y + 13), 1)
 
     # tags combobox — sunken text area + raised dropdown button
     cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 17
@@ -472,6 +510,21 @@ while run:
 
     ax, ay = bx + btn // 2, cy + ch // 2 + 1
     pygame.draw.polygon(window, (0, 0, 0), [(ax-3, ay-2), (ax+3, ay-2), (ax, ay+1)])
+
+    # TODO: show current tags in the combobox text area
+    # join the selected project's tags list into a single string separated by commas
+    # then draw that string inside the text area part of the combobox (to the left of the arrow button)
+
+    # TODO: dropdown open/close
+    # add a variable called dropdown_open (True/False) before the loop
+    # in MOUSEBUTTONDOWN, check if the arrow button rect was clicked — if so flip dropdown_open
+    # make a rect for the arrow button (it starts at bx, cy, and is btn wide and ch tall) so you can check clicks
+
+    # TODO: draw the dropdown list when dropdown_open is True
+    # loop over all_tags and draw each one as a small rect below the combobox
+    # keep track of each tag's rect so you can detect clicks on them
+    # clicking a tag should add it to projects[selected]["tags"] if it isn't already in there
+    # use the "in" keyword to check — it works on lists just like it works on strings
 
     # -------------------------------------------------------------------------
     # draw — progress bar (scrolls with content)
