@@ -21,9 +21,9 @@ pygame.display.set_caption("project tracker")
 
 # --- your project data ---
 projects = [
-    {"name": "project1", "status": "done",     "tags": ["tag1"], "progress": 0.50, "notes": ""},
-    {"name": "project2", "status": "on hold",  "tags": ["tag2"], "progress": 0.45, "notes": ""},
-    {"name": "project3", "status": "deadline", "tags": ["tag3"], "progress": 0.05, "notes": ""},
+    {"name": "project1", "status": "done",     "tags": [], "progress": 0.50, "notes": ""},
+    {"name": "project2", "status": "on hold",  "tags": [], "progress": 0.45, "notes": ""},
+    {"name": "project3", "status": "deadline", "tags": [], "progress": 0.05, "notes": ""},
 ]
 
 all_tags = ["tag1", "tag2", "tag3"]
@@ -57,6 +57,7 @@ plus_tags_rect     = pygame.Rect(0, 0, 0, 0)
 close_rect   = pygame.Rect(win_w - 30, 5, 20, 20)
 refresh_rect = pygame.Rect(win_w - 55, 5, 20, 20)
 
+
 resizing_right   = False
 resizing_bottom  = False
 resize_start_w   = 0
@@ -69,12 +70,18 @@ text_buffer    = ""
 saved_name     = ""
 last_click_time = 0
 last_click_i    = -1
+last_tag_click_i    = -1
+last_tag_click_time = 0
+editing_tag_i       = -1
 typing_mode = "name"
 name_rect       = pygame.Rect(0, 0, 0, 0)
 note_name_rect  = pygame.Rect(0, 0, 0, 0)
 caret_visible = False
 caret_timer   = 0
 cursor_pos = 0
+dropdown_open     = False
+tag_drop_rects    = []
+tag_sidebar_rects = []
 
 
 pygame.key.set_repeat(400, 50)
@@ -113,6 +120,8 @@ while run:
                 if event.key == pygame.K_ESCAPE:
                     if typing_mode == "name":
                         projects[selected]["name"] = saved_name
+                    elif typing_mode == "tag":
+                        all_tags[editing_tag_i] = saved_name
                     typing = False
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 elif event.key == pygame.K_BACKSPACE:
@@ -131,6 +140,10 @@ while run:
                     elif typing_mode == "note":
                         text_buffer += "\n"
                         projects[selected]["notes"] = text_buffer
+                    elif typing_mode == "tag":
+                        all_tags[editing_tag_i] = text_buffer
+                        typing = False
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 elif event.key == pygame.K_LEFT:
                     cursor_pos = cursor_pos - 1
                     if cursor_pos < 0:
@@ -139,14 +152,6 @@ while run:
                     cursor_pos = cursor_pos + 1
                     if cursor_pos > len(text_buffer):
                         cursor_pos = len(text_buffer)
-                    # TODO: arrow keys
-                    # Right now the caret is always at the end of the text.
-                    # To move it, you need a variable called cursor_pos — a number that says
-                    # which character the caret is sitting after (0 = before the first letter).
-                    # When the left arrow is pressed, subtract 1 from cursor_pos (don't go below 0).
-                    # When the right arrow is pressed, add 1 (don't go past the length of text_buffer).
-                    # Then everywhere you draw the caret or add/delete characters, use cursor_pos
-                    # instead of always working from the end.
                 else:
                     text_buffer = text_buffer[:cursor_pos] + event.unicode + text_buffer[cursor_pos:]
                     cursor_pos += 1
@@ -173,7 +178,14 @@ while run:
                 run = False
 
             if plus_projects_rect.collidepoint(event.pos) and event.button == 1:
-                projects.append({"name": "new project", "status": "", "tags": [], "progress": 0.00})
+                projects.append({"name": "", "status": "", "tags": [], "progress": 0.00})
+                selected = len(projects) - 1
+                typing = True
+                typing_mode = "name"
+                saved_name = ""
+                text_buffer = ""
+                cursor_pos = 0
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
                 
             for i, rect in enumerate(project_rect):
                 if rect.collidepoint(event.pos):
@@ -203,7 +215,41 @@ while run:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
 
             if plus_tags_rect.collidepoint(event.pos) and event.button == 1:
-                all_tags.append("new tag")
+                all_tags.append("")
+                editing_tag_i = len(all_tags) - 1
+                typing = True
+                typing_mode = "tag"
+                saved_name = ""
+                text_buffer = ""
+                cursor_pos = 0
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+
+            for i, rect in enumerate(tag_drop_rects):
+                if rect.collidepoint(event.pos) and event.button == 1:
+                    if all_tags[i] not in projects[selected]["tags"]:
+                        projects[selected]["tags"].append(all_tags[i])
+                    elif all_tags[i] in projects[selected]["tags"]:
+                        projects[selected]["tags"].remove(all_tags[i])
+
+            for i, rect in enumerate(tag_sidebar_rects):
+                if rect.collidepoint(event.pos):
+                    now = pygame.time.get_ticks()
+                    if i == last_tag_click_i and now - last_tag_click_time < 300:
+                        typing = True
+                        typing_mode = "tag"
+                        editing_tag_i = i
+                        saved_name = all_tags[i]
+                        text_buffer = ""
+                        cursor_pos = 0
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+                    last_tag_click_time = now
+                    last_tag_click_i = i
+            # You need a list of rects for the sidebar tag boxes — make it the same way as project_rect.
+            # Loop over that list with enumerate. On double-click (same pattern as project cards):
+            #   - set typing = True and typing_mode = "tag"
+            #   - save the current tag name in saved_name (so Escape can restore it)
+            #   - save the index i in a new variable called editing_tag_i (so you know which tag to save later)
+            #   - set text_buffer = "" so the old name is cleared and the user types fresh
 
             if right_edge.collidepoint(event.pos):
                 resizing_right = True
@@ -225,6 +271,9 @@ while run:
                     drag_start_abs_x, drag_start_abs_y = mx.value, my.value
                     sdl_win = SDLWindow.from_display_module()
                     drag_start_win_x, drag_start_win_y = sdl_win.position
+            
+            if combobox_rect.collidepoint(event.pos) and event.button == 1:
+                dropdown_open = not dropdown_open
 
         if event.type == pygame.MOUSEMOTION:
             if not resizing_right and not resizing_bottom and not dragging:
@@ -399,16 +448,34 @@ while run:
     # draw — sidebar: tags
     # -------------------------------------------------------------------------
     y = win_h * 3 // 5 + 10
-    for tag in all_tags:
+    tag_sidebar_rects = []
+    for i, tag in enumerate(all_tags):
         text_w, text_h = font_small.size(tag)
         rw, rh = text_w + 6, text_h + 4
+        tag_sidebar_rects.append(pygame.Rect(10, y, rw, rh))
         pygame.draw.rect(window, (212, 208, 200), (10, y, rw, rh))
-        pygame.draw.line(window, (128, 128, 128), (10,      y),      (10+rw-1, y),      1)
-        pygame.draw.line(window, (128, 128, 128), (10,      y),      (10,      y+rh-1), 1)
-        pygame.draw.line(window, (255, 255, 255), (10,      y+rh-1), (10+rw-1, y+rh-1), 1)
-        pygame.draw.line(window, (255, 255, 255), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
-        window.blit(font_small.render(tag, True, (0, 0, 0)), (13, y + 2))
+        editing_this = typing and typing_mode == "tag" and i == editing_tag_i
+        if editing_this:
+            pygame.draw.line(window, (255, 255, 255), (10,      y),      (10+rw-1, y),      1)
+            pygame.draw.line(window, (255, 255, 255), (10,      y),      (10,      y+rh-1), 1)
+            pygame.draw.line(window, (128, 128, 128), (10,      y+rh-1), (10+rw-1, y+rh-1), 1)
+            pygame.draw.line(window, (128, 128, 128), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
+        else:
+            pygame.draw.line(window, (128, 128, 128), (10,      y),      (10+rw-1, y),      1)
+            pygame.draw.line(window, (128, 128, 128), (10,      y),      (10,      y+rh-1), 1)
+            pygame.draw.line(window, (255, 255, 255), (10,      y+rh-1), (10+rw-1, y+rh-1), 1)
+            pygame.draw.line(window, (255, 255, 255), (10+rw-1, y),      (10+rw-1, y+rh-1), 1)
+        label = text_buffer if editing_this else tag
+        window.blit(font_small.render(label, True, (0, 0, 0)), (13, y + 2))
         y += rh + 4
+
+    # TODO: rename tags — double-click a tag box in the sidebar to edit its name
+
+
+    # same pattern as double-clicking a project card:
+    # use enumerate on all_tags to get the index, make a rect for each tag box,
+    # detect double-click with last_click_time, set typing = True with typing_mode = "tag",
+    # store the index being edited so you know which entry in all_tags to update on Enter
 
     # tags + button (fixed position, top-right corner of tags section)
     pbw_t = rh * 2
@@ -487,7 +554,7 @@ while run:
         pygame.draw.line(window, (0, 0, 0), (caret_x, caret_y), (caret_x, caret_y + 13), 1)
 
     # tags combobox — sunken text area + raised dropdown button
-    cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 17
+    cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 20
     btn = 18
     pygame.draw.rect(window, (255, 255, 255), (cx + 2, cy + 2, cw - btn - 3, ch - 4))
     pygame.draw.line(window, (128, 128, 128), (cx,       cy),      (cx+cw-1,  cy),      1)
@@ -511,20 +578,40 @@ while run:
     ax, ay = bx + btn // 2, cy + ch // 2 + 1
     pygame.draw.polygon(window, (0, 0, 0), [(ax-3, ay-2), (ax+3, ay-2), (ax, ay+1)])
 
-    # TODO: show current tags in the combobox text area
-    # join the selected project's tags list into a single string separated by commas
-    # then draw that string inside the text area part of the combobox (to the left of the arrow button)
+    # draw the selected project's tags as a comma-separated string in the combobox text area
+    tag_surf = font_small.render(", ".join(projects[selected]["tags"]), True, (0, 0, 0))
+    window.blit(tag_surf, (cx + 3, cy + 1))
+    combobox_rect = pygame.Rect(bx, cy, btn, ch)
 
-    # TODO: dropdown open/close
-    # add a variable called dropdown_open (True/False) before the loop
-    # in MOUSEBUTTONDOWN, check if the arrow button rect was clicked — if so flip dropdown_open
-    # make a rect for the arrow button (it starts at bx, cy, and is btn wide and ch tall) so you can check clicks
+    tag_drop_rects = []
+    if dropdown_open:
+        dx, dy = cx, cy + ch - 1.5
+        dw     = cw - btn
+        dh     = len(all_tags) * 18 + 20
+        pygame.draw.rect(window, (212, 208, 200), (dx, dy, dw, dh))
+        pygame.draw.line(window, (235, 233, 225), (dx,      dy),      (dx+dw-1, dy),      1)
+        pygame.draw.line(window, (212, 208, 200), (dx+1,    dy+1),    (dx+dw-2, dy+1),    1)
+        pygame.draw.line(window, (235, 233, 225), (dx,      dy),      (dx,      dy+dh-1), 1)
+        pygame.draw.line(window, (212, 208, 200), (dx+1,    dy+1),    (dx+1,    dy+dh-2), 1)
+        pygame.draw.line(window, (128, 128, 128), (dx,      dy+dh-1), (dx+dw-1, dy+dh-1), 1)
+        pygame.draw.line(window, (180, 180, 180), (dx+1,    dy+dh-2), (dx+dw-2, dy+dh-2), 1)
+        pygame.draw.line(window, (64,  64,  64),  (dx+dw-1, dy),      (dx+dw-1, dy+dh-1), 1)
+        pygame.draw.line(window, (128, 128, 128), (dx+dw-2, dy+1),    (dx+dw-2, dy+dh-2), 1)
+        for i, tag in enumerate(all_tags):
+            tags = font_small.render(tag, True, (0,0,0))
+            window.blit(tags, (dx + 3, dy + 4 + i * 18))
+            tag_drop_rects.append(pygame.Rect(dx + 3, dy + 4 + i * 18, dw, 18))
 
-    # TODO: draw the dropdown list when dropdown_open is True
-    # loop over all_tags and draw each one as a small rect below the combobox
-    # keep track of each tag's rect so you can detect clicks on them
-    # clicking a tag should add it to projects[selected]["tags"] if it isn't already in there
-    # use the "in" keyword to check — it works on lists just like it works on strings
+
+
+        # TODO: clicking the arrow button should flip dropdown_open True/False
+        # make a rect for the button using bx, cy, btn, ch and check it in MOUSEBUTTONDOWN
+
+        # TODO: draw each tag as a row inside the dropdown
+        # loop over all_tags with enumerate to get the index and tag name
+        # draw each tag at dy + 4 + index * 18 (so they stack down the box)
+        # clicking a row adds that tag to projects[selected]["tags"] if it isn't already there
+        # use the "in" keyword to check: if tag not in projects[selected]["tags"]
 
     # -------------------------------------------------------------------------
     # draw — progress bar (scrolls with content)

@@ -276,3 +276,33 @@ drawn this frame to the screen. Without this, nothing would appear.
 LINES 414-415: Cleanup
 -----------------------
 When the loop ends (run = False), shuts down pygame and exits the program cleanly.
+
+
+LIST OPERATIONS
+----------------
+These are the most useful things you can do with a list in Python.
+
+  .append(item)  — adds an item to the end of the list
+    Example:  projects[selected]["tags"].append("tag2")
+    Result:   ["tag1"]  →  ["tag1", "tag2"]
+
+  .remove(item)  — removes the first matching item from the list
+    Example:  projects[selected]["tags"].remove("tag1")
+    Result:   ["tag1", "tag2"]  →  ["tag2"]
+
+  in  — checks if something is already in the list, returns True or False
+    Example:  "tag1" in projects[selected]["tags"]
+    Result:   True if tag1 is in the list, False if it isn't
+
+  not in  — the opposite of in
+    Example:  if "tag1" not in projects[selected]["tags"]:
+    Use it to only add something if it isn't already there
+
+  Toggling an item (add if missing, remove if present):
+    if "tag1" in projects[selected]["tags"]:
+        projects[selected]["tags"].remove("tag1")
+    else:
+        projects[selected]["tags"].append("tag1")
+
+  len(list)  — gives you the number of items in the list
+    Example:  len(all_tags)  →  3  (if there are 3 tags)
