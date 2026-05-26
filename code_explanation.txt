@@ -417,34 +417,37 @@ Resize / drag:
 CODE WALKTHROUGH — WHAT EACH SECTION DOES
 ================================================================================
 
-Imports & Init
---------------
+LINES 1-9: Imports & Init
+--------------------------
 Imports pygame (graphics), sys (exit), subprocess (restart), ctypes (OS calls),
 platform (detect Windows vs Linux), and json (save/load data).
 pygame.init() starts all pygame systems.
 IS_WINDOWS detects the OS. On Windows, ctypes.wintypes is imported for native
 window move/resize. On Linux, pygame._sdl2 and libSDL2 do the same job.
 
-LINES 18-20: Window Setup
+LINES 20-22: Window Setup
 --------------------------
 Creates a 600x600 borderless window (pygame.NOFRAME — no OS title bar, we draw
 our own). Sets the window title to "project tracker".
 
-LINES 22-29: Project Data
---------------------------
+LINES 24-52: Project Data & Load
+----------------------------------
 projects is a list of dicts. Each dict has: name, status, tags (a list),
 progress (0.0 to 1.0), and notes.
 all_tags is a standalone list of every tag, separate from projects so tags can
 exist without being assigned to anything.
+The try/except block below loads data.json if it exists, overwriting the default
+data. On the first run the file doesn't exist yet, so except just passes.
 
-LINES 32-34: Fonts
+LINES 55-57: Fonts
 -------------------
 Two sizes of Tahoma — small (13px) for most text, big (16px) for headings.
 Tahoma is the font Windows XP used throughout its UI.
 
-State Variables
----------------
+LINES 62-127: State Variables
+------------------------------
 All the variables that track what is happening right now:
+
   - win_w, win_h: current window size (updated every frame)
   - run: set to False to quit
   - offset: how far the panel has been scrolled down
@@ -459,35 +462,30 @@ All the variables that track what is happening right now:
   - context_menu_delete/rename_hover — True when the mouse is over that row
   - context_menu_delete/rename_clicked — True while the mouse button is held down
     on that row (shows the sunken bevel)
-pygame.key.set_repeat(400, 50): makes held keys repeat — fires once after 400ms,
-then every 50ms. This is what makes holding backspace delete multiple characters.
+LINE 176: pygame.key.set_repeat(400, 50) — makes held keys repeat: fires once
+after 400ms, then every 50ms. This is what makes holding backspace delete multiple
+characters.
 
-Bevel Functions (defined before the main loop)
------------------------------------------------
+LINES 130-175: Bevel Functions
+--------------------------------
 Six functions handle all the bevel drawing. Each takes (surface, x, y, w, h).
 See the BEVEL RECIPE section for which function to use where.
 They're defined before the loop so they can be called anywhere inside it.
 
-Main Loop
-----------
+LINES 181-198: Main Loop & Caret Blink
+----------------------------------------
 while run: — everything inside runs ~60 times per second (one frame).
 pygame.time.delay(16) pauses 16ms per frame to give roughly 60fps.
-
-Caret Blink
------------
 At the top of the loop, checks if 500ms have passed since the last caret flip.
 If yes, flips caret_visible True/False. This makes the text cursor blink.
 If typing is False, caret_visible is forced to False (no cursor shown).
-
-Per-Frame Recalculation
------------------------
 win_w, win_h are re-read every frame in case the window was resized.
 right_edge and bottom_edge are thin Rects along the window edges, used to
 detect when the user wants to resize.
 On Windows, hwnd (the native window ID) is fetched for the Windows API calls.
 
-Event Handling
---------------
+LINES 200-504: Event Handling
+------------------------------
 Loops through every event that happened since the last frame.
 
   QUIT — close normally (e.g. task manager): stop the loop.
@@ -527,13 +525,13 @@ Loops through every event that happened since the last frame.
     - applies the final window size after a resize (enforces minimum 200x100)
     - resets all drag/resize flags
 
-Layout Recalculation
----------------------
+LINES 507-516: Layout Recalculation
+-------------------------------------
 Runs after events in case the window was just resized.
 Recalculates panel_w, title_h, and progress_W (the pixel width of the green bar).
 
-Draw — Background & Chrome
----------------------------
+LINES 519-574: Draw — Background & Chrome
+------------------------------------------
 Fills the window with XP cream, draws the blue gradient title bar (30 strips,
 dark navy left to light blue right), the title text, sidebar background, and
 main panel background.
@@ -541,18 +539,18 @@ Then draws the outer window border (raised bevel), the vertical divider between
 sidebar and panel (beveled), the horizontal divider splitting sidebar into
 projects/tags, and the red X and blue R buttons in the top-right.
 
-Draw — Sidebar
---------------
-Projects section: loops over projects with enumerate, draws each as a beveled
-box. The selected project gets draw_raised_bevel (pops out); others get
+LINES 577-634: Draw — Sidebar
+-------------------------------
+Projects section (577-603): loops over projects with enumerate, draws each as a
+beveled box. The selected project gets draw_raised_bevel (pops out); others get
 draw_sunken_bevel. After the loop, draws the + button.
 
-Tags section: same pattern for all_tags. If a tag is being renamed
+Tags section (606-634): same pattern for all_tags. If a tag is being renamed
 (editing_this is True), it gets draw_raised_bevel and shows text_buffer instead
 of the real tag name. After the loop, draws the tags + button.
 
-Draw — Main Panel
------------------
+LINES 637-733: Draw — Main Panel & Progress Bar
+-------------------------------------------------
 set_clip() limits drawing to the main panel area — anything outside is hidden,
 so scrolling content doesn't bleed into the sidebar or title bar.
 
@@ -568,8 +566,6 @@ of the notes text (split by \n). Draws the caret for the notes field — uses
 the text before cursor_pos split by \n to find which line and column the caret
 is on.
 
-Draw — Combobox & Dropdown
----------------------------
 Draws the tags combobox: draw_double_sunken_bevel for the text area, showing
 the selected project's tags as a comma-separated string. The arrow button uses
 draw_button_bevel. The triangle is drawn with pygame.draw.polygon using 3 points.
@@ -578,28 +574,22 @@ If dropdown_open is True, draws the dropdown box (draw_dropdown_bevel) just belo
 Loops over all_tags, draws each as a text row, appends a Rect to tag_drop_rects.
 These rects are used in the NEXT frame's events to detect clicks.
 
-Draw — Progress Bar
---------------------
-Draws the grey track (draw_sunken_bevel) and the green fill (draw_progress_bevel)
-inside the clip region so it scrolls with the content.
-bt, bb, bf, bfb are the y positions of the bevel lines, pre-adjusted for offset.
+Progress bar (720-733): draws the grey track (draw_sunken_bevel) and the green
+fill (draw_progress_bevel) inside the clip region so it scrolls with the content.
 
-Draw — Context Menu
---------------------
-Called after window.set_clip(None) so it draws on top of everything including
-the clipped main panel. Draws a white 80x55 box with draw_raised_bevel around it.
-Draws "delete" and "rename" text rows, builds context_menu_delete_rect and
-context_menu_rename_rect each frame. Draws a hover bevel (raised) or clicked
-bevel (sunken) over the relevant row depending on the state flags.
+LINES 735-773: Draw — Context & Tag Menus
+------------------------------------------
+Called after window.set_clip(None) so menus draw on top of everything including
+the clipped main panel.
+Context menu (737-757): draws a white 80x55 box with draw_raised_bevel around it.
+Draws "delete" and "rename" rows, builds the _rect for each row each frame.
+Draws a hover bevel (raised) or clicked bevel (sunken) over the relevant row.
+Tag menu (759-773): identical pattern for the tag right-click menu.
 
-Update & Cleanup
------------------
-window.set_clip(None) resets the clip so the sidebar draws correctly next frame.
+LINES 776-787: Update, Save & Quit
+------------------------------------
 pygame.display.update() pushes everything to the screen — without this, nothing
 would appear.
-
-Save & Quit
------------
 After the loop ends: builds a dict from projects and all_tags, writes it to
 data.json using json.dump(). Then pygame.quit() shuts down pygame and
 sys.exit() closes cleanly. On the next run, the load block at the top reads
