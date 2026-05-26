@@ -1,308 +1,606 @@
-PROJECT TRACKER - CODE EXPLANATION
-====================================
+PROJECT TRACKER - CODE REFERENCE
+==================================
+Look up a topic below when you need to build or fix something.
 
+
+================================================================================
+DRAWING TEXT
+================================================================================
+Two steps: render the text into a surface, then blit it onto the window.
+
+  surf = font.render("hello", True, (0, 0, 0))   # text, antialiasing, colour
+  window.blit(surf, (x, y))                       # paste it at position x, y
+
+To centre text inside a box:
+  window.blit(surf, (
+      box_rect.centerx - surf.get_width()  // 2,
+      box_rect.centery - surf.get_height() // 2,
+  ))
+
+To get the pixel width of a string before rendering it (useful for sizing boxes):
+  text_w, text_h = font.size("hello")
+
+
+================================================================================
 BEVEL RECIPE
--------------
+================================================================================
 A bevel makes a flat rectangle look 3D by drawing coloured lines along its edges.
-Think of light hitting from the top-left — top and left sides are bright, bottom and right are in shadow.
+Think of light hitting from the top-left.
 
-Sunken (like a text input — looks pushed into the screen):
-  top and left edges = dark,  bottom and right edges = white
+All bevels in this project are functions — call them instead of writing lines:
 
-Raised (like a button — looks popping out of the screen):
-  top and left edges = white,  bottom and right edges = dark
+  draw_raised_bevel(window, x, y, w, h)
+    — pops out. Used for: selected project card, + buttons, context menu box,
+      context menu hover highlight.
 
-To draw it: after pygame.draw.rect, use pygame.draw.line along each of the 4 edges.
-  top edge:    top-left corner  → top-right corner
-  left edge:   top-left corner  → bottom-left corner
-  bottom edge: bottom-left      → bottom-right
-  right edge:  top-right        → bottom-right
+  draw_sunken_bevel(window, x, y, w, h)
+    — pushed in. Used for: unselected project cards, unselected tag boxes,
+      context menu clicked highlight, progress bar track.
 
-Double bevel = draw two lines per edge, the second 1px inside the first with a slightly different shade.
-The notes/todos and files boxes use: grey + black on top/left (shadow), white + XP-grey on bottom/right (highlight).
+  draw_double_sunken_bevel(window, x, y, w, h)
+    — deeply sunken (two lines per edge). Used for: notes/files boxes,
+      the tags combobox text area.
+
+  draw_button_bevel(window, x, y, w, h)
+    — raised with a black outer edge and grey inner shadow on bottom+right.
+      Used for: the dropdown arrow button.
+
+  draw_dropdown_bevel(window, x, y, w, h)
+    — raised with light grey outer and panel-grey inner on top+left,
+      dark grey outer and medium-grey inner on bottom+right.
+      Used for: the tag dropdown list box.
+
+  draw_progress_bevel(window, x, y, w, h)
+    — white top+left, dark green bottom+right. Used for: the green progress fill.
+
+Always draw the rect fill first, then call the bevel function on top:
+  pygame.draw.rect(window, colour, (x, y, w, h))
+  draw_raised_bevel(window, x, y, w, h)
+
+XP colours:
+  cream background  (236, 233, 216)
+  panel grey        (212, 208, 200)
+  lighter grey      (235, 233, 225)
+  dark shadow       (128, 128, 128)
+  deep shadow       (64,  64,  64)
 
 
+================================================================================
 GRADIENT RECIPE
-----------------
-A gradient smoothly shifts from one colour to another across a rectangle.
-pygame has no built-in gradient, so you draw it yourself as a series of thin strips.
+================================================================================
+pygame has no built-in gradient — draw it as a series of thin strips.
 
-Steps:
-  1. Decide how many strips (bands) to split the rectangle into — more bands = smoother.
-  2. Loop from 0 to bands.
-  3. Each iteration, calculate the x position and width of the current strip.
-  4. Calculate the colour for that strip by blending between the start and end colour:
-       value = start + (end - start) * (i / bands)
-     Do this for r, g, and b separately.
-  5. Draw the strip with pygame.draw.rect using that colour.
-
-Example — the title bar goes from dark navy (10, 36, 106) on the left to light blue (166, 202, 240):
+  bands = 30
   for i in range(bands):
       bx = win_w * i // bands
       bw = win_w * (i + 1) // bands - bx
-      r  = int(10  + (166 - 10)  * i / bands)
-      g  = int(36  + (202 - 36)  * i / bands)
-      b  = int(106 + (240 - 106) * i / bands)
-      pygame.draw.rect(window, (r, g, b), (bx, 0, bw, title_h))
+      r  = int(start_r + (end_r - start_r) * i / bands)
+      g  = int(start_g + (end_g - start_g) * i / bands)
+      b  = int(start_b + (end_b - start_b) * i / bands)
+      pygame.draw.rect(window, (r, g, b), (bx, y, bw, h))
 
-The same pattern works top-to-bottom — just split by y instead of x.
+The title bar goes from dark navy (10, 36, 106) on the left to light blue (146, 202, 240).
+More bands = smoother. For top-to-bottom, split by y instead of x.
 
 
-VARIABLE GLOSSARY
-------------------
-General naming pattern:
-  x, y    = position (left edge, top edge)
-  w, h    = size (width, height)
-  r, t, b = right / top / bottom edge (a single coordinate, not a size)
+================================================================================
+CLICK DETECTION
+================================================================================
+pygame.Rect stores a rectangle and lets you check if a point is inside it.
 
+  rect = pygame.Rect(x, y, width, height)
+  rect.collidepoint(mouse_x, mouse_y)   # returns True if the point is inside
+
+In the event loop, event.pos gives you the mouse position as (x, y).
+  if rect.collidepoint(event.pos):
+      # the user clicked inside this rect
+
+To make a rect that wraps a piece of text:
+  surf = font.render(text, True, (0, 0, 0))
+  rect = pygame.Rect(x, y, surf.get_width(), surf.get_height())
+
+Important: rects used in the event section must be defined in the draw section
+of the PREVIOUS frame (the draw section runs after events). Always initialise
+them as pygame.Rect(0, 0, 0, 0) before the loop so they exist on frame 1.
+
+
+================================================================================
+DOUBLE-CLICK DETECTION
+================================================================================
+Check two things at the same time:
+  1. The same item was clicked twice (same index as last time)
+  2. The two clicks were less than 300ms apart
+
+  now = pygame.time.get_ticks()          # current time in milliseconds
+  if i == last_click_i and now - last_click_time < 300:
+      # double-click happened
+  last_click_time = now
+  last_click_i    = i
+
+You need a separate pair of variables for each thing you want to double-click
+(e.g. last_click_i / last_click_time for projects, last_tag_click_i /
+last_tag_click_time for tags) so they don't interfere with each other.
+
+
+================================================================================
+TEXT INPUT & TYPING MODE
+================================================================================
+The app has one shared typing system. These variables control it:
+
+  typing       — True while the user is editing any field
+  typing_mode  — which field: "name", "note", or "tag"
+  text_buffer  — what the user has typed so far
+  cursor_pos   — where in text_buffer the caret sits (0 = before first letter)
+  saved_name   — the original value before editing (so Escape can restore it)
+
+To start editing a field:
+  typing       = True
+  typing_mode  = "name"   (or "note" or "tag")
+  text_buffer  = current value of the field
+  cursor_pos   = len(text_buffer)   (caret starts at the end)
+  saved_name   = current value      (in case user presses Escape)
+  pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+
+To stop editing (save):
+  save text_buffer back into the data (e.g. projects[selected]["name"] = text_buffer)
+  typing = False
+  pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
+To cancel (Escape):
+  restore saved_name back into the data
+  typing = False
+  pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
+Any MOUSEBUTTONDOWN sets typing = False first, then re-enables it if the click
+was on an editable field — so clicking away always cancels editing.
+
+
+================================================================================
+CURSOR POSITION (inserting and deleting mid-text)
+================================================================================
+cursor_pos is an integer: 0 means before the first character, len(text_buffer)
+means after the last one.
+
+Insert a character at the cursor:
+  text_buffer = text_buffer[:cursor_pos] + new_char + text_buffer[cursor_pos:]
+  cursor_pos += 1
+
+Delete the character before the cursor (backspace):
+  if cursor_pos > 0:
+      text_buffer = text_buffer[:cursor_pos - 1] + text_buffer[cursor_pos:]
+      cursor_pos -= 1
+
+Move left:
+  cursor_pos = max(0, cursor_pos - 1)
+
+Move right:
+  cursor_pos = min(len(text_buffer), cursor_pos + 1)
+
+Draw the caret (a vertical line):
+  caret_x = x_start + font.size(text_buffer[:cursor_pos])[0]
+  pygame.draw.line(window, (0,0,0), (caret_x, y), (caret_x, y + line_height), 1)
+
+The caret blinks by flipping caret_visible every 500ms at the top of the loop:
+  now = pygame.time.get_ticks()
+  if typing and now - caret_timer >= 500:
+      caret_visible = not caret_visible
+      caret_timer   = now
+  if not typing:
+      caret_visible = False
+
+
+================================================================================
+DROPDOWN (tag_drop_rects pattern)
+================================================================================
+The dropdown is drawn during the draw section and clicked during the event section
+of the NEXT frame. The rects list is the link between them.
+
+Draw section:
+  tag_drop_rects = []          # reset every frame BEFORE drawing the dropdown
+  if dropdown_open:
+      for i, tag in enumerate(all_tags):
+          window.blit(...)     # draw each row
+          tag_drop_rects.append(pygame.Rect(...))   # store a rect for each row
+
+Event section (next frame):
+  for i, rect in enumerate(tag_drop_rects):
+      if rect.collidepoint(event.pos) and event.button == 1:
+          # use all_tags[i] — the index matches because we used enumerate
+
+The arrow button rect (combobox_rect) is also defined in draw and checked in events
+to flip dropdown_open True/False.
+
+Important: tag_drop_rects must be initialised as [] before the main loop, and
+reset to [] in the draw section just before the "if dropdown_open:" block —
+NOT in the event section, otherwise it gets wiped before clicks can use it.
+
+
+================================================================================
+FUNCTIONS (def)
+================================================================================
+A function is a reusable block of code you give a name to. Define it once,
+call it as many times as you want.
+
+  def greet(name):
+      print("hello " + name)
+
+  greet("world")   # prints: hello world
+
+"def" starts the definition. The name comes next, then brackets containing any
+inputs (called parameters). The body is indented underneath.
+
+Parameters are the variable names inside the brackets. When you call the
+function, the values you pass in are called arguments:
+
+  def add(a, b):
+      return a + b
+
+  result = add(3, 5)   # result = 8
+
+"return" sends a value back to whoever called the function. Without return,
+the function does its work but hands nothing back.
+
+Functions can take no parameters at all:
+
+  def reset():
+      global selected
+      selected = 0
+
+"global" is needed inside a function if you want to write to a variable that
+was defined outside it. Without it, you'd only create a local copy.
+
+In this project, bevel functions are defined before the main loop so they can
+be called anywhere inside it:
+
+  def draw_raised_bevel(surface, x, y, w, h):
+      pygame.draw.line(surface, (255,255,255), (x,     y    ), (x+w-1, y    ), 1)
+      pygame.draw.line(surface, (255,255,255), (x,     y    ), (x,     y+h-1), 1)
+      pygame.draw.line(surface, (128,128,128), (x,     y+h-1), (x+w-1, y+h-1), 1)
+      pygame.draw.line(surface, (128,128,128), (x+w-1, y    ), (x+w-1, y+h-1), 1)
+
+  draw_raised_bevel(window, 10, 50, 80, 20)   # one call instead of four lines
+
+
+================================================================================
+JSON SAVE / LOAD
+================================================================================
+JSON is a file format that can store Python lists and dicts as text.
+Use it to save data so it persists when you close and reopen the app.
+
+Save — write data to a file:
+  data = {"projects": projects, "tags": all_tags}
+  with open("data.json", "w") as f:
+      json.dump(data, f)
+
+  json.dump(data, f) — takes the dict and the open file, writes it out.
+  "w" mode creates the file if it doesn't exist, overwrites if it does.
+
+Load — read data back from the file:
+  try:
+      with open("data.json", "r") as f:
+          data = json.load(f)
+      projects = data["projects"]
+      all_tags  = data["tags"]
+  except:
+      pass
+
+  json.load(f) — reads the file and returns a Python dict.
+  try/except — if the file doesn't exist yet (first run) the except block
+  runs instead, which just does nothing (pass), so the app doesn't crash.
+
+"r" = read mode, "w" = write mode.
+import json must be at the top of the file.
+
+
+================================================================================
+DICTS
+================================================================================
+A dict stores data as key/value pairs — like a named box for each piece of info.
+
+  project = {"name": "my app", "progress": 0.5, "tags": []}
+
+Read a value by its key:
+  project["name"]        # returns "my app"
+  project["progress"]    # returns 0.5
+
+Change a value:
+  project["progress"] = 0.8
+
+Add a new key:
+  project["status"] = "done"
+
+Check if a key exists:
+  "notes" in project     # True or False
+
+In this project each project is a dict with these keys:
+  "name", "status", "tags", "progress", "notes"
+
+projects is a list of these dicts, so to get the selected project's name:
+  projects[selected]["name"]   # first index picks the dict, then the key picks the value
+
+
+================================================================================
+LIST OPERATIONS
+================================================================================
+  .append(item)  — adds an item to the end
+    projects[selected]["tags"].append("tag2")
+    ["tag1"]  becomes  ["tag1", "tag2"]
+
+  .remove(item)  — removes the first matching item
+    projects[selected]["tags"].remove("tag1")
+    ["tag1", "tag2"]  becomes  ["tag2"]
+
+  in / not in  — checks membership, returns True or False
+    "tag1" in projects[selected]["tags"]      # True if present
+    "tag1" not in projects[selected]["tags"]  # True if absent
+
+  Toggle (add if missing, remove if present):
+    if tag in project["tags"]:
+        project["tags"].remove(tag)
+    else:
+        project["tags"].append(tag)
+
+  len(list)  — number of items
+    len(all_tags)   # 3 if there are 3 tags
+
+  Looping with index:
+    for i, item in enumerate(my_list):
+        # i = index (0, 1, 2...), item = the value
+
+
+================================================================================
+COMMON BUGS
+================================================================================
+pygame.Rect needs whole numbers (integers), not decimals.
+  BAD:  pygame.Rect(x, y + 1.5, w, h)   — crashes with TypeError
+  FIX:  pygame.Rect(x, y + 1,   w, h)   — use int() or avoid decimals
+
+Missing key in a dict crashes with KeyError.
+  If you add a new project/tag with .append(), make sure the new dict has ALL
+  the same keys as the existing ones (name, status, tags, progress, notes).
+
+Variable defined in draw but used in events — crashes on the first click.
+  Variables like project_rect are defined in the draw section. The draw section
+  runs AFTER the event section each frame. Initialise them as [] or
+  pygame.Rect(0,0,0,0) before the loop so they exist on frame 1.
+
+The loop variable is not the list.
+  for project in projects:
+      project["tags"]        # correct — project is one dict
+      projects[i]["tags"]    # only correct if you used enumerate to get i
+      projects[selected]["tags"]  # wrong inside this loop — you're checking the
+                                  # same project every iteration, not each one
+
+Comparing int to string instead of int to int.
+  BAD:  cursor_pos > text_buffer   — comparing a number to a string, crashes
+  FIX:  cursor_pos > len(text_buffer)
+
+
+================================================================================
+VARIABLE QUICK REFERENCE
+================================================================================
 Layout:
-  title_h      — height of the title bar (30px)
-  SIDEBAR_X    — x where the sidebar ends and the main panel begins (150px)
-  panel_w / pw — width of the main panel (window width minus sidebar)
-  divider_y    — y of the horizontal line splitting sidebar into projects (top) and tags (bottom)
-  offset       — how many pixels the main panel content has been scrolled down
+  title_h   — height of the title bar (30px)
+  SIDEBAR_X — x where the sidebar ends (150px)
+  panel_w   — width of the main panel (win_w - SIDEBAR_X)
+  offset    — how many pixels the panel content has been scrolled down
 
-Box sizing (used in loops that draw project/tag boxes):
-  text_w, text_h — pixel width and height of a piece of text, from font.size()
-  rw, rh         — width and height of a bevel box: text size + a few pixels of padding
-
-Loop variables:
-  enumerate(list) — a built-in that gives you both the index AND the item as you loop.
-   instead of:  for item in list          (item only)
-    you write:   for i, item in enumerate(list)  (index + item)
-  i — the index (position number) of the current item in the loop.
-   i=0 means first item, i=1 means second, etc.
-   useful for knowing WHICH item you are on, e.g. to compare with selected.
-
-Text input:
-  typing          — True when the user is currently editing a project name
-  text_buffer     — the letters the user has typed so far
-  last_click_time — the time (in milliseconds) of the last click on a project card
-  last_click_i    — which project was last clicked (used to detect double-click on the same card)
-  name_rect       — a clickable rect around the project name in the main panel
-
-  Double-click works by checking two things at once:
-    1. the same card was clicked twice (last_click_i == i)
-    2. the two clicks were less than 300ms apart (pygame.time.get_ticks() gives the current time in ms)
-
-Plus buttons:
-  px, py   — position of a + button (top-left corner)
-  pbw      — width of the projects + button  (pbw_t for the tags one)
+Box sizing:
+  text_w, text_h — pixel size of a piece of text, from font.size()
+  rw, rh         — size of a bevel box: text size + padding (usually +6, +4)
 
 Progress bar:
   bar_h      — height of the grey track
-  progress_W — pixel width of the green fill (track width × progress value)
-  bt, bb     — y of the track's top and bottom bevel lines (already adjusted for scroll offset)
-  bf, bfb    — y of the fill's top and bottom bevel lines (same idea, 2px inside the track)
+  progress_W — pixel width of the green fill (track width x progress value)
+  bt, bb     — y of track top/bottom bevel lines (adjusted for scroll)
+  bf, bfb    — y of fill top/bottom bevel lines
 
-Combobox (the tags dropdown):
+Combobox:
   cx, cy, cw, ch — x, y, width, height of the whole combobox
-  btn            — width of the small dropdown button on the right side
-  bx             — x where the dropdown button starts (cx + cw - btn)
-  ax, ay         — center point of the triangle arrow inside the button
+  btn            — width of the dropdown arrow button
+  bx             — x where the arrow button starts (cx + cw - btn)
+  ax, ay         — centre point of the triangle arrow
 
 Fade divider lines:
-  line_y     — y position of a section divider line
-  fade_dist  — how many pixels the line fades over (shorter = sharper, longer = softer)
-  xi         — current x pixel being drawn as the fade loop steps across
+  line_y    — y position of the divider
+  fade_dist — how many pixels it fades over
+  xi        — current x pixel in the fade loop
 
-Resize / drag state:
-  resize_start_w/h  — window size at the moment a resize began
-  resize_delta_x/y  — how far the mouse has moved since the resize started (Linux only)
-  drag_start_win_x/y  — window position when dragging started
-  drag_start_abs_x/y  — absolute screen cursor position when dragging started
+Resize / drag:
+  resize_start_w/h   — window size when resize began
+  resize_delta_x/y   — how far mouse has moved (Linux only)
+  drag_start_win_x/y — window position when drag began
+  drag_start_abs_x/y — absolute cursor position when drag began
 
 
-LINES 1-16: Imports & Init
----------------------------
-Imports pygame (graphics/window library), sys (for exiting), subprocess (for restarting the app),
-ctypes (for low-level OS calls), and platform (to detect the OS).
-pygame.init() starts up all pygame systems.
-IS_WINDOWS detects whether the app is running on Windows or Linux.
-On Windows, ctypes.wintypes is imported for native window move/resize via the Windows API.
-On Linux, pygame._sdl2 and libSDL2 are imported to handle the same operations cross-platform.
+================================================================================
+CODE WALKTHROUGH — WHAT EACH SECTION DOES
+================================================================================
+
+Imports & Init
+--------------
+Imports pygame (graphics), sys (exit), subprocess (restart), ctypes (OS calls),
+platform (detect Windows vs Linux), and json (save/load data).
+pygame.init() starts all pygame systems.
+IS_WINDOWS detects the OS. On Windows, ctypes.wintypes is imported for native
+window move/resize. On Linux, pygame._sdl2 and libSDL2 do the same job.
 
 LINES 18-20: Window Setup
 --------------------------
-Creates a 600x600 pixel window with no frame (no title bar or borders — we draw our own).
-Sets the window title to "project tracker".
+Creates a 600x600 borderless window (pygame.NOFRAME — no OS title bar, we draw
+our own). Sets the window title to "project tracker".
 
 LINES 22-29: Project Data
 --------------------------
-A list of 3 projects. Each project is a dictionary with a name, status, list of tags,
-and a progress value between 0 and 1 (so 0.50 = 50% done).
-all_tags is a standalone list of every tag — independent of projects so tags can be
-added/removed without touching the project data.
+projects is a list of dicts. Each dict has: name, status, tags (a list),
+progress (0.0 to 1.0), and notes.
+all_tags is a standalone list of every tag, separate from projects so tags can
+exist without being assigned to anything.
 
-LINES 29-31: Fonts
+LINES 32-34: Fonts
 -------------------
-Loads two sizes of the Tahoma font — small (13px) for most text, big (16px) for headings.
+Two sizes of Tahoma — small (13px) for most text, big (16px) for headings.
 Tahoma is the font Windows XP used throughout its UI.
 
-LINES 33-56: Layout & State Variables
---------------------------------------
-SIDEBAR_X = 150: the sidebar takes up the left 150 pixels.
-win_w, win_h: the current window width and height.
-panel_w: the width of the main content area (window width minus sidebar).
-run: keeps the main loop going — set to False to quit.
-offset: how far the content has been scrolled down.
-dragging, drag_offset_x/y: tracks whether the user is dragging the window and where they grabbed it.
-resizing_right, resizing_bottom: tracks whether the user is resizing from the right or bottom edge.
-resize_start_w/h, resize_delta_x/y: on Linux, stores the window size at the start of a resize
-  and accumulates how far the mouse has moved, so the final size can be applied on mouse release.
-drag_start_win_x/y, drag_start_abs_x/y: on Linux, stores the window position and absolute cursor
-  position at the moment dragging starts, so the window can follow the cursor correctly.
+State Variables
+---------------
+All the variables that track what is happening right now:
+  - win_w, win_h: current window size (updated every frame)
+  - run: set to False to quit
+  - offset: how far the panel has been scrolled down
+  - selected: which project is currently open
+  - dragging / resizing flags and their start positions
+  - typing system variables (typing, typing_mode, text_buffer, cursor_pos, etc.)
+  - dropdown_open, tag_drop_rects, tag_sidebar_rects
+  - context_menu_open, context_menu_x/y, context_menu_i — whether the right-click
+    menu is visible, where it is, and which project was right-clicked
+  - context_menu_delete_rect / context_menu_rename_rect — Rects for the two menu
+    rows, built in the draw section each frame
+  - context_menu_delete/rename_hover — True when the mouse is over that row
+  - context_menu_delete/rename_clicked — True while the mouse button is held down
+    on that row (shows the sunken bevel)
+pygame.key.set_repeat(400, 50): makes held keys repeat — fires once after 400ms,
+then every 50ms. This is what makes holding backspace delete multiple characters.
 
-LINE 62: Main Loop
--------------------
-Everything from here to the end runs ~60 times per second (once per frame).
+Bevel Functions (defined before the main loop)
+-----------------------------------------------
+Six functions handle all the bevel drawing. Each takes (surface, x, y, w, h).
+See the BEVEL RECIPE section for which function to use where.
+They're defined before the loop so they can be called anywhere inside it.
 
-LINE 63: Frame Rate Limiter
-----------------------------
-Pauses for 16 milliseconds each frame, giving roughly 60 frames per second.
+Main Loop
+----------
+while run: — everything inside runs ~60 times per second (one frame).
+pygame.time.delay(16) pauses 16ms per frame to give roughly 60fps.
 
-LINES 65-68: Clickable Zones
-------------------------------
-close_rect: a small rectangle in the top-right corner — clicking it closes the app.
-refresh_rect: the blue button just to the left of close — clicking it restarts the app.
-right_edge: a thin strip along the right side of the window — used to detect resize dragging.
-bottom_edge: a thin strip along the bottom — same idea for vertical resizing.
+Caret Blink
+-----------
+At the top of the loop, checks if 500ms have passed since the last caret flip.
+If yes, flips caret_visible True/False. This makes the text cursor blink.
+If typing is False, caret_visible is forced to False (no cursor shown).
 
-LINES 70-71: Windows Handle
------------------------------
-On Windows only, gets the native window handle (hwnd) — a low-level ID used by the
-Windows API to move and resize the window via ctypes.
-
-LINES 73-174: Event Handling
-------------------------------
-Loops through all events that happened since the last frame:
-
-  QUIT: If the user closes the window normally, stop the loop.
-
-  KEYDOWN: A key was pressed — no action yet (placeholder for future keyboard logic).
-
-  MOUSEWHEEL: Scrolling the mouse wheel moves content up or down by 20 pixels per
-  tick, but only when the mouse is over the main panel (not the sidebar). The offset is clamped
-  so it can't go above 0 (can't scroll past the top) or past the bottom of the content.
-
-  MOUSEBUTTONDOWN: On a left click:
-    - If the X button was clicked, quit.
-    - If the R button was clicked, launch a new copy of the script with subprocess.Popen
-      (Popen doesn't block — it starts the new window and immediately moves on),
-      then set run = False to close the current window.
-    - If the projects + button was clicked, append a new blank project to the list.
-    - If the right edge was clicked, start resizing horizontally.
-    - If the bottom edge was clicked, start resizing vertically.
-    - If the click was in the title bar area (top 35px), start dragging the window.
-      On Linux, also records the absolute cursor position and window position so
-      dragging can be calculated correctly.
-
-  MOUSEMOTION: While the mouse is moving:
-    - If not doing anything special, change the cursor to a resize arrow when hovering
-      over the window edges, or back to the normal arrow otherwise.
-    - If resizing right/bottom on Windows: uses the Windows API to stretch the window live.
-      On Linux: accumulates how far the mouse has moved but doesn't resize until mouse up.
-    - If dragging on Windows: uses the Windows API to move the window to follow the cursor.
-      On Linux: uses SDL2 to get the absolute cursor position and moves the window accordingly.
-
-  MOUSEBUTTONUP: When the mouse button is released:
-    - If a resize just finished on Windows: reads the final size from the Windows API and applies it.
-      On Linux: adds the accumulated mouse delta to the starting window size to get the final size.
-      Both enforce a minimum size of 200x100.
-    - Reset all drag/resize flags and restore the normal cursor.
-
-LINES 176-189: Recalculate Layout
------------------------------------
-After handling events, recalculate win_w/win_h (in case the window was resized),
-then work out panel dimensions. Also reads the progress value for the selected project
-(currently always project 0) and calculates how wide the progress bar fill should be.
-progress_W is capped at panel_w-22 so the green fill never overflows the grey track.
-
-LINES 191-212: Draw — Background
-----------------------------------
-Fills the whole window with the XP cream color, then draws the blue gradient title bar
-(30 vertical strips shifting from dark navy on the left to light sky blue on the right),
-a thin highlight line at the very top, the title text, and fills the sidebar and main panel.
-
-LINES 214-247: Draw — Chrome
-------------------------------
-Draws the outer window border (raised bevel: white top/left, dark bottom/right),
-the beveled vertical divider between sidebar and panel, the beveled horizontal divider
-that splits the sidebar into projects (top) and tags (bottom), the red close button with
-an "X", and the blue refresh button with an "R". Both buttons center their label using
-the text surface's width and height.
-
-LINES 262-318: Draw — Sidebar
--------------------------------
-Projects section: loops over the projects list and draws each one as a sunken beveled box.
-After the loop, draws a fixed "+" button in the top-right corner — clicking it appends a new project.
-Tags section: loops over all_tags and draws each tag the same way.
-After that loop, draws a second "+" button in the corner of the tags section — clicking it appends a new tag.
-Both + buttons are raised bevel (opposite of the project/tag boxes) so they look pressable.
-
-LINES 320-336: Clip Region & Fade Lines
------------------------------------------
-Sets a clipping rectangle so that anything drawn outside the main panel is invisible
-(prevents scrolling content from overlapping the sidebar or title bar).
-Then draws 4 horizontal divider lines, each fading from blue on the left to white on the right.
-Each line is 3px tall. Layout rule: label → divider (+17px) → content (+5px) → next label (+20px).
-
-LINES 338-343: Section Labels
--------------------------------
-Draws the project name in large text, and the "tags", "notes / todos", "files", "links"
-section labels. All y positions subtract offset so they move when you scroll.
-
-LINES 345-383: Boxes & Combobox
----------------------------------
-Notes/todos and files boxes use a double sunken bevel — grey + black on top/left (shadow),
-white + XP grey on bottom/right (highlight) — to look like classic 90s text input areas.
-The tags combobox has the same sunken border for the text area, plus a raised dropdown button
-on the right side with a small filled triangle arrow centered inside it.
-
-LINES 385-408: Draw — Progress Bar
--------------------------------------
-Draws the progress bar inside the clip region so it scrolls with the content.
-Four helper variables (bt, bb, bf, bfb) hold the y positions of the track top/bottom and
-fill top/bottom, all already adjusted by offset, so the bevel lines stay in sync.
-The grey track uses a sunken bevel (dark top/left, white bottom/right).
-The green fill uses a raised bevel with dark green shadows (0,100,0) on the bottom and right
-so the edges contrast clearly against the grey track instead of blending into it.
-
-LINE 410: Update Display
--------------------------
-Resets the clip region so the sidebar draws correctly next frame, then pushes everything
-drawn this frame to the screen. Without this, nothing would appear.
-
-LINES 414-415: Cleanup
+Per-Frame Recalculation
 -----------------------
-When the loop ends (run = False), shuts down pygame and exits the program cleanly.
+win_w, win_h are re-read every frame in case the window was resized.
+right_edge and bottom_edge are thin Rects along the window edges, used to
+detect when the user wants to resize.
+On Windows, hwnd (the native window ID) is fetched for the Windows API calls.
 
+Event Handling
+--------------
+Loops through every event that happened since the last frame.
 
-LIST OPERATIONS
-----------------
-These are the most useful things you can do with a list in Python.
+  QUIT — close normally (e.g. task manager): stop the loop.
 
-  .append(item)  — adds an item to the end of the list
-    Example:  projects[selected]["tags"].append("tag2")
-    Result:   ["tag1"]  →  ["tag1", "tag2"]
+  KEYDOWN — a key was pressed while typing is True:
+    Escape  → cancel edit, restore saved_name
+    Backspace → delete char before cursor, move cursor back
+    Return  → save (name/tag) or insert newline (note)
+              saving a tag rename also updates every project that had the old name
+    Left/Right arrow → move cursor_pos left or right
+    Any other key → insert the character at cursor_pos
 
-  .remove(item)  — removes the first matching item from the list
-    Example:  projects[selected]["tags"].remove("tag1")
-    Result:   ["tag1", "tag2"]  →  ["tag2"]
+  MOUSEWHEEL — scroll the main panel up or down 20px per tick.
+    offset is clamped so you can't scroll past the top or bottom.
 
-  in  — checks if something is already in the list, returns True or False
-    Example:  "tag1" in projects[selected]["tags"]
-    Result:   True if tag1 is in the list, False if it isn't
+  MOUSEBUTTONDOWN:
+    - cancels typing first (typing = False)
+    - checks each clickable thing in order:
+        close / refresh buttons, projects + button, project cards (single/double),
+        right-click on a project card opens the context menu,
+        context menu delete/rename rows set their _clicked flag (shows sunken bevel),
+        notes box, tags + button, tag sidebar (single/double), dropdown rows,
+        dropdown arrow button, resize edges, title bar (drag)
 
-  not in  — the opposite of in
-    Example:  if "tag1" not in projects[selected]["tags"]:
-    Use it to only add something if it isn't already there
+  MOUSEMOTION:
+    - updates context_menu_delete/rename_hover based on collidepoint
+    - changes cursor to resize arrows when hovering over the edges
+    - keeps cursor as ibeam while typing
+    - if resizing: on Windows applies size live via the Windows API;
+      on Linux accumulates the delta and applies on release
+    - if dragging: moves the window to follow the cursor
 
-  Toggling an item (add if missing, remove if present):
-    if "tag1" in projects[selected]["tags"]:
-        projects[selected]["tags"].remove("tag1")
-    else:
-        projects[selected]["tags"].append("tag1")
+  MOUSEBUTTONUP:
+    - if delete row was released: pops the project, closes the menu
+    - if rename row was released: starts typing mode on that project, closes menu
+    - resets all _clicked and _hover flags for the context menu
+    - applies the final window size after a resize (enforces minimum 200x100)
+    - resets all drag/resize flags
 
-  len(list)  — gives you the number of items in the list
-    Example:  len(all_tags)  →  3  (if there are 3 tags)
+Layout Recalculation
+---------------------
+Runs after events in case the window was just resized.
+Recalculates panel_w, title_h, and progress_W (the pixel width of the green bar).
+
+Draw — Background & Chrome
+---------------------------
+Fills the window with XP cream, draws the blue gradient title bar (30 strips,
+dark navy left to light blue right), the title text, sidebar background, and
+main panel background.
+Then draws the outer window border (raised bevel), the vertical divider between
+sidebar and panel (beveled), the horizontal divider splitting sidebar into
+projects/tags, and the red X and blue R buttons in the top-right.
+
+Draw — Sidebar
+--------------
+Projects section: loops over projects with enumerate, draws each as a beveled
+box. The selected project gets draw_raised_bevel (pops out); others get
+draw_sunken_bevel. After the loop, draws the + button.
+
+Tags section: same pattern for all_tags. If a tag is being renamed
+(editing_this is True), it gets draw_raised_bevel and shows text_buffer instead
+of the real tag name. After the loop, draws the tags + button.
+
+Draw — Main Panel
+-----------------
+set_clip() limits drawing to the main panel area — anything outside is hidden,
+so scrolling content doesn't bleed into the sidebar or title bar.
+
+Draws 4 fading divider lines (blue → white, each 3px tall).
+Layout rule: label → divider +17px → content +5px → next label +20px.
+
+Draws the project name in big font (shows text_buffer if typing_mode is "name").
+Draws the caret for the name field if caret_visible is True.
+Draws the "tags", "notes / todos", "files", "links" section labels.
+
+Draws the notes and files boxes with draw_double_sunken_bevel. Renders each line
+of the notes text (split by \n). Draws the caret for the notes field — uses
+the text before cursor_pos split by \n to find which line and column the caret
+is on.
+
+Draw — Combobox & Dropdown
+---------------------------
+Draws the tags combobox: draw_double_sunken_bevel for the text area, showing
+the selected project's tags as a comma-separated string. The arrow button uses
+draw_button_bevel. The triangle is drawn with pygame.draw.polygon using 3 points.
+
+If dropdown_open is True, draws the dropdown box (draw_dropdown_bevel) just below.
+Loops over all_tags, draws each as a text row, appends a Rect to tag_drop_rects.
+These rects are used in the NEXT frame's events to detect clicks.
+
+Draw — Progress Bar
+--------------------
+Draws the grey track (draw_sunken_bevel) and the green fill (draw_progress_bevel)
+inside the clip region so it scrolls with the content.
+bt, bb, bf, bfb are the y positions of the bevel lines, pre-adjusted for offset.
+
+Draw — Context Menu
+--------------------
+Called after window.set_clip(None) so it draws on top of everything including
+the clipped main panel. Draws a white 80x55 box with draw_raised_bevel around it.
+Draws "delete" and "rename" text rows, builds context_menu_delete_rect and
+context_menu_rename_rect each frame. Draws a hover bevel (raised) or clicked
+bevel (sunken) over the relevant row depending on the state flags.
+
+Update & Cleanup
+-----------------
+window.set_clip(None) resets the clip so the sidebar draws correctly next frame.
+pygame.display.update() pushes everything to the screen — without this, nothing
+would appear.
+
+Save & Quit
+-----------
+After the loop ends: builds a dict from projects and all_tags, writes it to
+data.json using json.dump(). Then pygame.quit() shuts down pygame and
+sys.exit() closes cleanly. On the next run, the load block at the top reads
+data.json back in so everything is restored.
