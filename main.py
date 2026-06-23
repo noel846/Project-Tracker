@@ -4,7 +4,7 @@ import subprocess
 import ctypes
 import platform
 import json
-# import json at the top — needed for save/load
+import webbrowser
 
 pygame.init()
 
@@ -23,9 +23,10 @@ pygame.display.set_caption("project tracker")
 
 # --- your project data ---
 projects = [
-    {"name": "project1", "status": "done",     "tags": [], "progress": 0.50, "notes": ""},
-    {"name": "project2", "status": "on hold",  "tags": [], "progress": 0.45, "notes": ""},
-    {"name": "project3", "status": "deadline", "tags": [], "progress": 0.05, "notes": ""},
+    # files step 1 — add "files": [] to each project here, same as "tags": []
+    {"name": "project1", "status": "done",     "tags": [], "progress": 0.50, "notes": "", "links": ["https://github.com"], "files": []},
+    {"name": "project2", "status": "on hold",  "tags": [], "progress": 0.45, "notes": "", "links": [], "files": []},
+    {"name": "project3", "status": "deadline", "tags": [], "progress": 0.05, "notes": "", "links": [], "files": []},
 ]
 
 all_tags = ["tag1", "tag2", "tag3"]
@@ -36,20 +37,12 @@ try:
         all_tags = data["tags"]
 except:
     pass
-# LOAD saved data:
-# try/except works like this:
-#   try:
-#       code that might fail
-#   except:
-#       what to do if it failed
-# use it here because on the first run data.json doesn't exist yet,
-# so opening it would crash — except catches that and skips it instead
-#
-# inside try:
-#   open "data.json" in read mode ("r") and use json.load() to turn it into a dict
-#   then set projects = data["projects"] and all_tags = data["tags"]
-# inside except:
-#   just write pass (means do nothing)
+
+for p in projects:
+    if "links" not in p:
+        p["links"] = []
+    if "files" not in p:
+        p["files"] = []
 
 
 # --- fonts ---
@@ -99,6 +92,7 @@ editing_tag_i       = -1
 typing_mode = "name"
 name_rect       = pygame.Rect(0, 0, 0, 0)
 note_name_rect  = pygame.Rect(0, 0, 0, 0)
+status_rect     = pygame.Rect(0, 0, 0, 0)
 caret_visible = False
 caret_timer   = 0
 cursor_pos = 0
@@ -125,6 +119,24 @@ tag_menu_delete_hover = False
 tag_menu_rename_hover = False
 tag_menu_delete_clicked = False
 tag_menu_rename_clicked = False
+context_menu_log_rect    = pygame.Rect(0, 0, 0, 0)
+context_menu_log_hover   = False
+context_menu_log_clicked = False
+context_menu_status_rect    = pygame.Rect(0, 0, 0, 0)
+context_menu_status_hover   = False
+context_menu_status_clicked = False
+status_submenu_open    = False
+status_submenu_x       = 0
+status_submenu_y       = 0
+status_submenu_hover_i = -1
+status_submenu_rects   = []
+tag_menu_log_rect    = pygame.Rect(0, 0, 0, 0)
+tag_menu_log_hover   = False
+tag_menu_log_clicked = False
+progress_log_rect = pygame.Rect(0, 0, 0, 0)
+link_rects        = []
+link_hover_i      = -1
+link_clicked_i    = -1
 
 
 def draw_raised_bevel(surface, x, y, w, h):
@@ -238,6 +250,14 @@ while run:
                                 project["tags"].append(text_buffer)
                         typing = False
                         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                    elif typing_mode == "progress":
+                        if text_buffer:
+                            new_val = min(1.0, projects[selected]["progress"] + float(text_buffer) / 100)
+                            projects[selected]["progress"] = new_val
+                            if new_val == 1.0:
+                                projects[selected]["status"] = "done"
+                        typing = False
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 elif event.key == pygame.K_LEFT:
                     cursor_pos = cursor_pos - 1
                     if cursor_pos < 0:
@@ -247,10 +267,15 @@ while run:
                     if cursor_pos > len(text_buffer):
                         cursor_pos = len(text_buffer)
                 else:
-                    text_buffer = text_buffer[:cursor_pos] + event.unicode + text_buffer[cursor_pos:]
-                    cursor_pos += 1
-                    if typing_mode == "note":
-                        projects[selected]["notes"] = text_buffer
+                    if typing_mode == "progress":
+                        if event.unicode.isdigit():
+                            text_buffer = text_buffer[:cursor_pos] + event.unicode + text_buffer[cursor_pos:]
+                            cursor_pos += 1
+                    else:
+                        text_buffer = text_buffer[:cursor_pos] + event.unicode + text_buffer[cursor_pos:]
+                        cursor_pos += 1
+                        if typing_mode == "note":
+                            projects[selected]["notes"] = text_buffer
 
         if event.type == pygame.MOUSEWHEEL:
             if pygame.mouse.get_pos()[0] > SIDEBAR_X:
@@ -265,9 +290,11 @@ while run:
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
             if context_menu_open and event.button == 1:
-                menu_rect = pygame.Rect(context_menu_x, context_menu_y, 80, 55)
-                if not menu_rect.collidepoint(event.pos):
-                    context_menu_open = False
+                menu_rect = pygame.Rect(context_menu_x, context_menu_y, 80, 79)
+                sub_rect  = pygame.Rect(status_submenu_x, status_submenu_y, 75, 76) if status_submenu_open else pygame.Rect(0, 0, 0, 0)
+                if not menu_rect.collidepoint(event.pos) and not sub_rect.collidepoint(event.pos):
+                    context_menu_open   = False
+                    status_submenu_open = False
 
             if tag_menu_open and event.button == 1:
                 tmenu_rect = pygame.Rect(tag_menu_x, tag_menu_y, 80, 55)
@@ -318,6 +345,10 @@ while run:
                     context_menu_delete_clicked = True
                 if context_menu_rename_rect.collidepoint(event.pos) and event.button == 1:
                     context_menu_rename_clicked = True
+                if context_menu_log_rect.collidepoint(event.pos) and event.button == 1:
+                    context_menu_log_clicked = True
+                if context_menu_status_rect.collidepoint(event.pos) and event.button == 1:
+                    context_menu_status_clicked = True
 
             if name_rect.collidepoint(event.pos) and event.button == 1:
                 typing_mode = "name"
@@ -330,6 +361,17 @@ while run:
                 typing = True
                 text_buffer = projects[selected]["notes"]
                 cursor_pos = len(text_buffer)
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+
+            for li, lr in enumerate(link_rects):
+                if lr.collidepoint(event.pos) and event.button == 1:
+                    link_clicked_i = li
+
+            if progress_log_rect.collidepoint(event.pos) and event.button == 1:
+                typing = True
+                typing_mode = "progress"
+                text_buffer = ""
+                cursor_pos = 0
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
 
             if plus_tags_rect.collidepoint(event.pos) and event.button == 1:
@@ -396,11 +438,23 @@ while run:
             
             if combobox_rect.collidepoint(event.pos) and event.button == 1:
                 dropdown_open = not dropdown_open
-            
+
         if event.type == pygame.MOUSEMOTION:
             if context_menu_open:
                 context_menu_delete_hover = context_menu_delete_rect.collidepoint(event.pos)
                 context_menu_rename_hover = context_menu_rename_rect.collidepoint(event.pos)
+                context_menu_log_hover    = context_menu_log_rect.collidepoint(event.pos)
+                context_menu_status_hover = context_menu_status_rect.collidepoint(event.pos)
+            if status_submenu_open:
+                statuses_list = ["on hold", "in progress", "deadline", "done"]
+                status_submenu_hover_i = -1
+                for si, sr in enumerate(status_submenu_rects):
+                    if sr.collidepoint(event.pos) and statuses_list[si] != "done":
+                        status_submenu_hover_i = si
+            link_hover_i = -1
+            for li, lr in enumerate(link_rects):
+                if lr.collidepoint(event.pos):
+                    link_hover_i = li
             if tag_menu_open:
                 tag_menu_delete_hover = tag_menu_delete_rect.collidepoint(event.pos)
                 tag_menu_rename_hover = tag_menu_rename_rect.collidepoint(event.pos)
@@ -460,6 +514,28 @@ while run:
                     context_menu_open = False
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
                 context_menu_rename_clicked = False
+                
+                if context_menu_log_rect.collidepoint(event.pos) and event.button == 1:
+                    selected = context_menu_i
+                    typing = True
+                    typing_mode = "progress"
+                    text_buffer = ""
+                    cursor_pos = 0
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
+                    context_menu_log_clicked = False
+                if context_menu_status_rect.collidepoint(event.pos) and event.button == 1:
+                    if projects[context_menu_i]["status"] != "done":
+                        status_submenu_open = True
+                        status_submenu_x = context_menu_x + 80
+                        status_submenu_y = context_menu_y + 59
+                    context_menu_status_clicked = False
+                if status_submenu_open:
+                    statuses_list = ["on hold", "in progress", "deadline", "done"]
+                    for si, sr in enumerate(status_submenu_rects):
+                        if sr.collidepoint(event.pos) and event.button == 1 and statuses_list[si] != "done":
+                            projects[context_menu_i]["status"] = statuses_list[si]
+                            status_submenu_open = False
+                            context_menu_open   = False
 
             if tag_menu_open:
                 if tag_menu_delete_rect.collidepoint(event.pos) and event.button == 1:
@@ -480,6 +556,15 @@ while run:
                     tag_menu_open = False
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
                 tag_menu_rename_clicked = False
+
+            for li, lr in enumerate(link_rects):
+                if lr.collidepoint(event.pos) and event.button == 1:
+                    import threading
+                    threading.Thread(target=webbrowser.open, args=(projects[selected]["links"][li],), daemon=True).start()
+            link_clicked_i = -1
+            # files step 4 — check if the user clicked one of the file squares and open it with subprocess.Popen
+            # files step 5 — check if the user clicked the "+" button and call tkinter.filedialog.askopenfilename()
+            # files step 6 — check if the user right-clicked a file square and open a small "open / remove" menu
 
             if resizing_right or resizing_bottom:
                 if IS_WINDOWS:
@@ -573,6 +658,12 @@ while run:
         refresh_rect.centery - r_text.get_height() // 2,
     ))
 
+    for p in projects:
+        if p["progress"] >= 1.0:
+            p["status"] = "done"
+        elif p["status"] == "done":
+            p["status"] = "in progress"
+
     # -------------------------------------------------------------------------
     # draw — sidebar: projects
     # -------------------------------------------------------------------------
@@ -588,6 +679,15 @@ while run:
         else:
             draw_sunken_bevel(window, 10, y, rw, rh)
         window.blit(font_small.render(project["name"], True, (0, 0, 0)), (13, y + 2))
+        if project["status"] == "done":
+            sq_color = (0, 180, 0)
+        elif project["status"] == "on hold":
+            sq_color = (220, 180, 0)
+        elif project["status"] == "deadline":
+            sq_color = (200, 0, 0)
+        else:
+            sq_color = (150, 150, 150)
+        pygame.draw.rect(window, sq_color, (3, y + 4, 6, 6))
         y += rh + 4
 
     # projects + button (fixed position, top-right corner of sidebar)
@@ -687,6 +787,28 @@ while run:
         caret_y       = title_h + 124 + caret_line * 16 - offset
         pygame.draw.line(window, (0, 0, 0), (caret_x, caret_y), (caret_x, caret_y + 13), 1)
 
+    # files step 2 — loop through projects[selected]["files"] and draw each one as a small square inside the files box
+    #                the box is at (155, title_h + 381 - offset) and is 430 wide and 120 tall
+    #                draw each square starting from the left, spaced out in a row
+    # files step 3 — draw a small "+" button to the right of the "files" label at the top of the section
+
+    pygame.draw.rect(window, (255, 255, 255), (157, title_h + 540 - offset, 426, 116))
+    draw_double_sunken_bevel(window, 155, title_h + 538 - offset, 430, 120)
+
+    link_rects = []
+    for li, link in enumerate(projects[selected]["links"]):
+        lx = 157
+        ly = title_h + 541 + li * 20 - offset
+        pygame.draw.rect(window, (212, 208, 200), (lx, ly, 426, 18))
+        link_rects.append(pygame.Rect(lx, ly, 426, 18))
+        if li == link_clicked_i:
+            draw_sunken_bevel(window, lx, ly, 426, 18)
+        elif li == link_hover_i:
+            draw_raised_bevel(window, lx, ly, 426, 18)
+        else:
+            draw_raised_bevel(window, lx, ly, 426, 18)
+        window.blit(font_small.render(link, True, (0, 0, 0)), (lx + 4, ly + 2))
+
     # tags combobox — sunken text area + raised dropdown button
     cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 20
     btn = 18
@@ -732,30 +854,74 @@ while run:
     pygame.draw.rect(window, (0, 165, 0), (SIDEBAR_X+7, bf, progress_W, bar_h-4))
     draw_progress_bevel(window, SIDEBAR_X+7, bf, progress_W, bar_h-4)
 
+    if typing and typing_mode == "progress":
+        box_x = SIDEBAR_X + panel_w - 47
+        box_y = bt + bar_h + 2
+        pygame.draw.rect(window, (255, 255, 255), (box_x, box_y, 42, 16))
+        draw_sunken_bevel(window, box_x, box_y, 42, 16)
+        progress_label = font_small.render(text_buffer + "|", True, (0, 0, 0))
+        window.blit(progress_label, (box_x + 3, box_y + 1))
+        progress_log_rect = pygame.Rect(box_x, box_y, 42, 16)
+    else:
+        progress_label = font_small.render(str(int(progress * 100)) + "%", True, (0, 0, 0))
+        label_x = SIDEBAR_X + panel_w - 7 - progress_label.get_width()
+        window.blit(progress_label, (label_x, bt + bar_h + 2))
+        progress_log_rect = pygame.Rect(label_x, bt + bar_h + 2, progress_label.get_width(), progress_label.get_height())
+
     window.set_clip(None)
 
     # draw the context menu after set_clip(None) so it draws on top of everything:
     if context_menu_open:
-        pygame.draw.rect(window, (255, 255, 255), (context_menu_x, context_menu_y, 80, 55))
-        delete_text = font_small.render("delete", True, (0,0,0))
-        window.blit(delete_text, (context_menu_x + 7, context_menu_y + 3))
-        rename_text = font_small.render("rename", True, (0,0,0))
-        window.blit(rename_text, (context_menu_x + 7, context_menu_y + 19))
-        context_menu_delete_rect = pygame.Rect(context_menu_x + 2, context_menu_y + 2, 76, 19)
-        context_menu_rename_rect = pygame.Rect(context_menu_x + 2, context_menu_y + 19, 76, 19)
-        draw_raised_bevel(window, context_menu_x, context_menu_y, 80, 55)
+        pygame.draw.rect(window, (255, 255, 255), (context_menu_x, context_menu_y, 80, 79))
+        window.blit(font_small.render("delete", True, (0,0,0)), (context_menu_x + 7, context_menu_y + 3))
+        window.blit(font_small.render("rename", True, (0,0,0)), (context_menu_x + 7, context_menu_y + 22))
+        window.blit(font_small.render("log",    True, (0,0,0)), (context_menu_x + 7, context_menu_y + 41))
+        window.blit(font_small.render(projects[context_menu_i]["status"], True, (0,0,0)), (context_menu_x + 7, context_menu_y + 60))
+        context_menu_delete_rect = pygame.Rect(context_menu_x + 2, context_menu_y + 2,  76, 19)
+        context_menu_rename_rect = pygame.Rect(context_menu_x + 2, context_menu_y + 21, 76, 19)
+        context_menu_log_rect    = pygame.Rect(context_menu_x + 2, context_menu_y + 40, 76, 19)
+        context_menu_status_rect    = pygame.Rect(context_menu_x + 2, context_menu_y + 59, 76, 19)
+        draw_raised_bevel(window, context_menu_x, context_menu_y, 80, 79)
 
         if context_menu_delete_hover:
-            draw_raised_bevel(window, context_menu_x + 2, context_menu_y + 2, 76, 19)
+            draw_raised_bevel(window, context_menu_x + 2, context_menu_y + 2,  76, 19)
 
         if context_menu_delete_clicked:
-            draw_sunken_bevel(window, context_menu_x + 2, context_menu_y + 2, 76, 19)
+            draw_sunken_bevel(window, context_menu_x + 2, context_menu_y + 2,  76, 19)
 
         if context_menu_rename_hover:
-            draw_raised_bevel(window, context_menu_x + 2, context_menu_y + 19, 76, 19)
+            draw_raised_bevel(window, context_menu_x + 2, context_menu_y + 21, 76, 19)
 
         if context_menu_rename_clicked:
-            draw_sunken_bevel(window, context_menu_x + 2, context_menu_y + 19, 76, 19)
+            draw_sunken_bevel(window, context_menu_x + 2, context_menu_y + 21, 76, 19)
+
+        if context_menu_log_hover:
+            draw_raised_bevel(window, context_menu_x + 2, context_menu_y + 40, 76, 19)
+
+        if context_menu_log_clicked:
+            draw_sunken_bevel(window, context_menu_x + 2, context_menu_y + 40, 76, 19)
+
+        if context_menu_status_hover and projects[context_menu_i]["status"] != "done":
+            draw_raised_bevel(window, context_menu_x + 2, context_menu_y + 59, 76, 19)
+
+        if context_menu_status_clicked:
+            draw_sunken_bevel(window, context_menu_x + 2, context_menu_y + 59, 76, 19)
+
+    if status_submenu_open:
+        statuses_list = ["on hold", "in progress", "deadline", "done"]
+        sub_w = 75
+        sub_h = len(statuses_list) * 19
+        pygame.draw.rect(window, (255, 255, 255), (status_submenu_x, status_submenu_y, sub_w, sub_h))
+        draw_raised_bevel(window, status_submenu_x, status_submenu_y, sub_w, sub_h)
+        status_submenu_rects = []
+        for si, s in enumerate(statuses_list):
+            ry = status_submenu_y + si * 19
+            color = (180, 180, 180) if s == "done" else (0, 0, 0)
+            window.blit(font_small.render(s, True, color), (status_submenu_x + 5, ry + 3))
+            status_submenu_rects.append(pygame.Rect(status_submenu_x, ry, sub_w, 19))
+            if si == status_submenu_hover_i:
+                draw_raised_bevel(window, status_submenu_x + 2, ry + 1, sub_w - 4, 17)
+
     if tag_menu_open:
         pygame.draw.rect(window, (255, 255, 255), (tag_menu_x, tag_menu_y, 80, 55))
         window.blit(font_small.render("delete", True, (0, 0, 0)), (tag_menu_x + 7, tag_menu_y + 3))
@@ -775,13 +941,9 @@ while run:
 
     pygame.display.update()
 
-# SAVE data:
 data = {"projects": projects, "tags": all_tags}
 with open("data.json", "w") as f:
     json.dump(data, f)
-# 1. make a dict with two keys: {"projects": projects, "tags": all_tags}
-# 2. open "data.json" in write mode ("w") and use json.dump() to write it
-#    json.dump() takes two arguments: the dict, and the file
 
 pygame.quit()
 sys.exit(0)

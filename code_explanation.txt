@@ -313,7 +313,7 @@ Check if a key exists:
   "notes" in project     # True or False
 
 In this project each project is a dict with these keys:
-  "name", "status", "tags", "progress", "notes"
+  "name", "status", "tags", "progress", "notes", "links", "files"
 
 projects is a list of these dicts, so to get the selected project's name:
   projects[selected]["name"]   # first index picks the dict, then the key picks the value
@@ -357,7 +357,12 @@ pygame.Rect needs whole numbers (integers), not decimals.
 
 Missing key in a dict crashes with KeyError.
   If you add a new project/tag with .append(), make sure the new dict has ALL
-  the same keys as the existing ones (name, status, tags, progress, notes).
+  the same keys as the existing ones (name, status, tags, progress, notes, links, files).
+  When adding a new key to existing projects, add a fallback loop after the JSON load
+  so old save files don't crash:
+    for p in projects:
+        if "links" not in p:
+            p["links"] = []
 
 Variable defined in draw but used in events — crashes on the first click.
   Variables like project_rect are defined in the draw section. The draw section
@@ -433,11 +438,17 @@ our own). Sets the window title to "project tracker".
 LINES 24-52: Project Data & Load
 ----------------------------------
 projects is a list of dicts. Each dict has: name, status, tags (a list),
-progress (0.0 to 1.0), and notes.
+progress (0.0 to 1.0), notes, links (a list of URL strings), and files (a list
+of file paths).
 all_tags is a standalone list of every tag, separate from projects so tags can
 exist without being assigned to anything.
-The try/except block below loads data.json if it exists, overwriting the default
-data. On the first run the file doesn't exist yet, so except just passes.
+The try/except block loads data.json if it exists, overwriting the defaults.
+On the first run the file doesn't exist yet, so except just passes.
+After loading, a loop adds "links": [] and "files": [] to any project that was
+saved before those keys existed — this prevents a KeyError on old save files.
+A second loop at the top of the draw section enforces status rules: if progress
+is 1.0 the status is forced to "done", and if status is "done" but progress is
+below 1.0 it resets to "in progress".
 
 LINES 55-57: Fonts
 -------------------
@@ -459,9 +470,15 @@ All the variables that track what is happening right now:
     menu is visible, where it is, and which project was right-clicked
   - context_menu_delete_rect / context_menu_rename_rect — Rects for the two menu
     rows, built in the draw section each frame
-  - context_menu_delete/rename_hover — True when the mouse is over that row
-  - context_menu_delete/rename_clicked — True while the mouse button is held down
+  - context_menu_delete/rename/log/status_hover — True when the mouse is over that row
+  - context_menu_delete/rename/log/status_clicked — True while the mouse button is held
     on that row (shows the sunken bevel)
+  - status_submenu_open, status_submenu_x/y — whether the status picker submenu is open
+    and where it sits (to the right of the context menu)
+  - status_submenu_rects, status_submenu_hover_i — rects for each row in the submenu,
+    and which one the mouse is currently over
+  - link_rects — list of Rects for each link row, rebuilt every draw frame
+  - link_hover_i, link_clicked_i — which link row the mouse is over / holding down
 LINE 176: pygame.key.set_repeat(400, 50) — makes held keys repeat: fires once
 after 400ms, then every 50ms. This is what makes holding backspace delete multiple
 characters.
@@ -566,6 +583,15 @@ of the notes text (split by \n). Draws the caret for the notes field — uses
 the text before cursor_pos split by \n to find which line and column the caret
 is on.
 
+Draws the links box (double sunken bevel) below the links label. Loops over
+projects[selected]["links"] and draws each URL as a raised-bevel row inside the box.
+link_rects is reset to [] and rebuilt each frame — one Rect per row. Clicking a
+row opens the URL in the browser using webbrowser.open() running in a background
+thread so the UI doesn't freeze.
+
+Each project in the sidebar has a 6x6 coloured square to the left of its name:
+green = done, yellow = on hold, red = deadline, grey = anything else.
+
 Draws the tags combobox: draw_double_sunken_bevel for the text area, showing
 the selected project's tags as a comma-separated string. The arrow button uses
 draw_button_bevel. The triangle is drawn with pygame.draw.polygon using 3 points.
@@ -581,10 +607,13 @@ LINES 735-773: Draw — Context & Tag Menus
 ------------------------------------------
 Called after window.set_clip(None) so menus draw on top of everything including
 the clipped main panel.
-Context menu (737-757): draws a white 80x55 box with draw_raised_bevel around it.
-Draws "delete" and "rename" rows, builds the _rect for each row each frame.
-Draws a hover bevel (raised) or clicked bevel (sunken) over the relevant row.
-Tag menu (759-773): identical pattern for the tag right-click menu.
+Context menu: draws a white 80x79 box with draw_raised_bevel around it.
+Has 4 rows: delete, rename, log, and status. Each row has its own _rect, _hover,
+and _clicked variable. Clicking "log" opens a digit-only text input in the panel
+that adds to the project's progress (capped at 1.0). Clicking "status" opens a
+submenu to the right listing all 4 statuses — "done" is greyed out and unclickable
+since it can only be set automatically when progress reaches 100%.
+Tag menu: identical pattern but with only delete and rename rows.
 
 LINES 776-787: Update, Save & Quit
 ------------------------------------
