@@ -76,7 +76,6 @@ drag_start_abs_y = 0
 plus_projects_rect = pygame.Rect(0, 0, 0, 0)
 plus_tags_rect     = pygame.Rect(0, 0, 0, 0)
 close_rect   = pygame.Rect(win_w - 30, 5, 20, 20)
-refresh_rect = pygame.Rect(win_w - 55, 5, 20, 20)
 
 
 resizing_right   = False
@@ -343,9 +342,6 @@ while run:
             if close_rect.collidepoint(event.pos) and event.button == 1:
                 run = False
 
-            if refresh_rect.collidepoint(event.pos) and event.button == 1:
-                subprocess.Popen(["python3", sys.argv[0]])
-                run = False
 
             if plus_projects_rect.collidepoint(event.pos) and event.button == 1:
                 projects.append({"name": "", "status": "", "tags": [], "progress": 0.00, "notes": ""})
@@ -375,7 +371,7 @@ while run:
                 plus_link_clicked = True
                 typing = True
                 typing_mode = "link"
-                text_bufffer = ""
+                text_buffer = ""
             
             for i, rect in enumerate(project_rect):
                 if rect.collidepoint(event.pos):
@@ -698,7 +694,6 @@ while run:
     # layout recalculation (must happen after events in case window was resized)
     # -------------------------------------------------------------------------
     close_rect   = pygame.Rect(win_w - 30, 5, 20, 20)
-    refresh_rect = pygame.Rect(win_w - 55, 5, 20, 20)
     panel_w      = win_w - SIDEBAR_X
     pw           = win_w - SIDEBAR_X
     title_h      = 30
@@ -756,13 +751,6 @@ while run:
         close_rect.centery - x_text.get_height() // 2,
     ))
 
-    # refresh button
-    pygame.draw.rect(window, (0, 0, 200), refresh_rect)
-    r_text = font_small.render("R", True, (255, 255, 255))
-    window.blit(r_text, (
-        refresh_rect.centerx - r_text.get_width()  // 2,
-        refresh_rect.centery - r_text.get_height() // 2,
-    ))
 
     for p in projects:
         if p["progress"] >= 1.0:
@@ -890,7 +878,9 @@ while run:
     note_name_rect = pygame.Rect(155, title_h + 119 - offset, 430, 220)
     notes_to_draw = text_buffer if (typing and typing_mode == "note") else projects[selected]["notes"]
     note_lines = notes_to_draw.split("\n")
-    window.set_clip(pygame.Rect(157, title_h + 121 - offset, 426, 216))
+    panel_clip = pygame.Rect(SIDEBAR_X + 2, title_h, win_w - SIDEBAR_X - 2, win_h - title_h)
+    notes_clip = pygame.Rect(157, title_h + 121 - offset, 426, 216)
+    window.set_clip(notes_clip.clip(panel_clip))
     for note_i, note in enumerate(note_lines):
         window.blit(font_small.render(note, True, (0, 0, 0)), (160, title_h + 124 + note_i * 16 - offset - notes_scroll))
     if typing and typing_mode == "note" and caret_visible:
