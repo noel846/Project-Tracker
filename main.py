@@ -5,6 +5,9 @@ import ctypes
 import platform
 import json
 import webbrowser
+import os
+import tkinter as tk
+from tkinter import filedialog
 
 pygame.init()
 
@@ -23,15 +26,17 @@ pygame.display.set_caption("project tracker")
 
 # --- your project data ---
 projects = [
-    # files step 1 — add "files": [] to each project here, same as "tags": []
-    {"name": "project1", "status": "done",     "tags": [], "progress": 0.50, "notes": "", "links": ["https://github.com"], "files": []},
+    {"name": "project1", "status": "done",     "tags": [], "progress": 0.50, "notes": "", "links": [], "files": []},
     {"name": "project2", "status": "on hold",  "tags": [], "progress": 0.45, "notes": "", "links": [], "files": []},
     {"name": "project3", "status": "deadline", "tags": [], "progress": 0.05, "notes": "", "links": [], "files": []},
 ]
 
 all_tags = ["tag1", "tag2", "tag3"]
+_save_dir  = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "ProjectTracker")
+os.makedirs(_save_dir, exist_ok=True)
+SAVE_PATH  = os.path.join(_save_dir, "data.json")
 try:
-    with open("data.json", "r") as f:
+    with open(SAVE_PATH, "r") as f:
         data = json.load(f)
         projects = data["projects"]
         all_tags = data["tags"]
@@ -135,8 +140,31 @@ tag_menu_log_hover   = False
 tag_menu_log_clicked = False
 progress_log_rect = pygame.Rect(0, 0, 0, 0)
 link_rects        = []
+link_menu_open    = False
+link_menu_i       = -1
+link_menu_x       = 0
+link_menu_y       = 0
+link_menu_delete_rect  = pygame.Rect(0, 0, 0, 0)
+link_menu_delete_hover   = False
+link_menu_delete_clicked = False
 link_hover_i      = -1
 link_clicked_i    = -1
+plus_link_clicked =  False
+plus_link_rect = pygame.Rect(0, 0, 0, 0)
+files_box_rect  = pygame.Rect(0, 0, 0, 0)
+file_rects      = []
+file_menu_open  = False
+file_menu_i     = -1
+file_menu_x     = 0
+file_menu_y     = 0
+file_menu_open_rect    = pygame.Rect(0, 0, 0, 0)
+file_menu_delete_rect  = pygame.Rect(0, 0, 0, 0)
+file_menu_open_hover   = False
+file_menu_delete_hover = False
+notes_scroll = 0
+links_scroll = 0
+files_scroll = 0
+focused_section = None
 
 
 def draw_raised_bevel(surface, x, y, w, h):
@@ -258,6 +286,12 @@ while run:
                                 projects[selected]["status"] = "done"
                         typing = False
                         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                    elif typing_mode == "link":
+                        if text_buffer and "." in text_buffer:
+                            url = text_buffer if text_buffer.startswith("http") else "https://" + text_buffer
+                            projects[selected]["links"].append(url)
+                        typing = False
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 elif event.key == pygame.K_LEFT:
                     cursor_pos = cursor_pos - 1
                     if cursor_pos < 0:
@@ -287,6 +321,7 @@ while run:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             typing = False
+            focused_section = None
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
             if context_menu_open and event.button == 1:
@@ -321,7 +356,27 @@ while run:
                 text_buffer = ""
                 cursor_pos = 0
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
-                
+
+            # fix — picker opens even when files exist: change the condition to also check
+            #       not any(fr.collidepoint(event.pos) for fr in file_rects)
+            #       so clicking an existing icon doesn't open the picker
+            if files_box_rect.collidepoint(event.pos) and event.button == 1 and not any(fr.collidepoint(event.pos) for fr in file_rects):
+                root = tk.Tk()
+                root.withdraw()
+                root.wm_attributes('-topmost', 1)
+                path = filedialog.askopenfilename(parent=root)
+                root.destroy()
+                pygame.event.clear()
+                if path:
+                    projects[selected]["files"].append(path)
+
+            if plus_link_rect.collidepoint(event.pos) and event.button == 1:
+                focused_section = "links"
+                plus_link_clicked = True
+                typing = True
+                typing_mode = "link"
+                text_bufffer = ""
+            
             for i, rect in enumerate(project_rect):
                 if rect.collidepoint(event.pos):
                     now = pygame.time.get_ticks()
@@ -357,6 +412,7 @@ while run:
                 cursor_pos = len(text_buffer)
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_IBEAM)
             if note_name_rect.collidepoint(event.pos) and event.button == 1:
+                focused_section = "notes"
                 typing_mode = "note"
                 typing = True
                 text_buffer = projects[selected]["notes"]
@@ -366,6 +422,18 @@ while run:
             for li, lr in enumerate(link_rects):
                 if lr.collidepoint(event.pos) and event.button == 1:
                     link_clicked_i = li
+                    focused_section = "links"
+                if lr.collidepoint(event.pos) and event.button == 3:
+                    link_menu_open = True
+                    lnik_menu_i = li
+                    link_menu_x = event.pos[0]
+                    link_menu_y = event.pos[1]
+                # step 1 — right-click a link row to open the delete menu:
+                #   if lr.collidepoint(event.pos) and event.button == 3:
+                #       link_menu_open = True
+                #       link_menu_i    = li
+                #       link_menu_x    = event.pos[0]
+                #       link_menu_y    = event.pos[1]
 
             if progress_log_rect.collidepoint(event.pos) and event.button == 1:
                 typing = True
@@ -415,6 +483,36 @@ while run:
                 if tag_menu_rename_rect.collidepoint(event.pos) and event.button == 1:
                     tag_menu_rename_clicked = True
 
+            for fi, fr in enumerate(file_rects):
+                if fr.collidepoint(event.pos) and event.button == 3:
+                    file_menu_open = True
+                    file_menu_i    = fi
+                    file_menu_x    = event.pos[0]
+                    file_menu_y    = event.pos[1]
+            if file_menu_open and event.button == 1:
+                if file_menu_open_rect.collidepoint(event.pos):
+                    if IS_WINDOWS:
+                        os.startfile(projects[selected]["files"][file_menu_i])
+                    else:
+                        subprocess.Popen(["xdg-open", projects[selected]["files"][file_menu_i]])
+                    file_menu_open = False
+                elif file_menu_delete_rect.collidepoint(event.pos):
+                    projects[selected]["files"].pop(file_menu_i)
+                    file_menu_open = False
+                else:
+                    file_menu_open = False
+
+            if link_menu_open and event.button == 1:
+                if link_menu_delete_rect.collidepoint(event.pos):
+                    link_menu_delete_clicked = True
+                else:
+                    link_menu_open = False
+            # step 2 — handle clicking the link delete menu:
+            #   if link_menu_open and event.button == 1:
+            #       if link_menu_delete_rect.collidepoint(event.pos):
+            #           projects[selected]["links"].pop(link_menu_i)
+            #       link_menu_open = False
+
             if right_edge.collidepoint(event.pos):
                 resizing_right = True
                 resize_start_w, resize_delta_x = win_w, 0
@@ -458,6 +556,11 @@ while run:
             if tag_menu_open:
                 tag_menu_delete_hover = tag_menu_delete_rect.collidepoint(event.pos)
                 tag_menu_rename_hover = tag_menu_rename_rect.collidepoint(event.pos)
+            if file_menu_open:
+                file_menu_open_hover   = file_menu_open_rect.collidepoint(event.pos)
+                file_menu_delete_hover = file_menu_delete_rect.collidepoint(event.pos)
+            if link_menu_open:
+                link_menu_delete_hover = link_menu_delete_rect.collidepoint(event.pos)
 
             if not resizing_right and not resizing_bottom and not dragging:
                 if right_edge.collidepoint(event.pos):
@@ -558,13 +661,16 @@ while run:
                 tag_menu_rename_clicked = False
 
             for li, lr in enumerate(link_rects):
-                if lr.collidepoint(event.pos) and event.button == 1:
+                if lr.collidepoint(event.pos) and event.button == 1 and not link_menu_open:
                     import threading
                     threading.Thread(target=webbrowser.open, args=(projects[selected]["links"][li],), daemon=True).start()
             link_clicked_i = -1
-            # files step 4 — check if the user clicked one of the file squares and open it with subprocess.Popen
-            # files step 5 — check if the user clicked the "+" button and call tkinter.filedialog.askopenfilename()
-            # files step 6 — check if the user right-clicked a file square and open a small "open / remove" menu
+            if link_menu_delete_clicked:
+                projects[selected]["links"].pop(link_menu_i)
+                link_menu_open = False
+            link_menu_delete_clicked = False
+
+            plus_link_clicked = False
 
             if resizing_right or resizing_bottom:
                 if IS_WINDOWS:
@@ -698,8 +804,8 @@ while run:
     plus_projects_rect = pygame.Rect(px, py, pbw, rh)
     plus_text = font_small.render("+", True, (0, 0, 0))
     window.blit(plus_text, (
-        plus_projects_rect.centerx - plus_text.get_width()  // 2,
-        plus_projects_rect.centery - plus_text.get_height() // 2,
+        plus_projects_rect.centerx - plus_text.get_width()  // 2 - 1,
+        plus_projects_rect.centery - plus_text.get_height() // 2 - 1,
     ))
 
     # -------------------------------------------------------------------------
@@ -729,8 +835,8 @@ while run:
     plus_tags_rect = pygame.Rect(px, py, pbw_t, rh)
     plus_text_tag = font_small.render("+", True, (0, 0, 0))
     window.blit(plus_text_tag, (
-        plus_tags_rect.centerx - plus_text_tag.get_width()  // 2,
-        plus_tags_rect.centery - plus_text_tag.get_height() // 2,
+        plus_tags_rect.centerx - plus_text_tag.get_width()  // 2 - 1,
+        plus_tags_rect.centery - plus_text_tag.get_height() // 2 - 1,
     ))
 
     # -------------------------------------------------------------------------
@@ -766,7 +872,13 @@ while run:
     window.blit(font_small.render("notes / todos", True, (80, 80, 80)), (155, title_h + 97  - offset))
     window.blit(font_small.render("files",         True, (80, 80, 80)), (155, title_h + 359 - offset))
     window.blit(font_small.render("links",         True, (80, 80, 80)), (155, title_h + 521 - offset))
-
+    pygame.draw.rect(window, (212, 208, 200), (550, title_h + 520 - offset, 25, 15))
+    plus_link_rect = pygame.Rect(550, title_h + 520 - offset, 25, 15)
+    if plus_link_clicked:
+        draw_sunken_bevel(window, 550, title_h + 520 - offset, 25, 15)
+    else:
+        draw_raised_bevel(window, 550, title_h + 520 - offset, 25, 15)
+    window.blit(font_small.render("+",             True, (0, 0, 0)), (558, title_h + 519 - offset))
     # notes/todos and files boxes — double sunken bevel
     for rx, ry, rw, rh in [
         (155, title_h + 119 - offset, 430, 220),
@@ -778,36 +890,76 @@ while run:
     note_name_rect = pygame.Rect(155, title_h + 119 - offset, 430, 220)
     notes_to_draw = text_buffer if (typing and typing_mode == "note") else projects[selected]["notes"]
     note_lines = notes_to_draw.split("\n")
+    window.set_clip(pygame.Rect(157, title_h + 121 - offset, 426, 216))
     for note_i, note in enumerate(note_lines):
-        window.blit(font_small.render(note, True, (0, 0, 0)), (160, title_h + 124 + note_i * 16 - offset))
+        window.blit(font_small.render(note, True, (0, 0, 0)), (160, title_h + 124 + note_i * 16 - offset - notes_scroll))
     if typing and typing_mode == "note" and caret_visible:
         before_cursor = text_buffer[:cursor_pos].split("\n")
         caret_line    = len(before_cursor) - 1
         caret_x       = 160 + font_small.size(before_cursor[-1])[0]
-        caret_y       = title_h + 124 + caret_line * 16 - offset
+        caret_y       = title_h + 124 + caret_line * 16 - offset - notes_scroll
         pygame.draw.line(window, (0, 0, 0), (caret_x, caret_y), (caret_x, caret_y + 13), 1)
+    window.set_clip(pygame.Rect(SIDEBAR_X + 2, title_h, win_w - SIDEBAR_X - 2, win_h - title_h))
 
-    # files step 2 — loop through projects[selected]["files"] and draw each one as a small square inside the files box
-    #                the box is at (155, title_h + 381 - offset) and is 430 wide and 120 tall
-    #                draw each square starting from the left, spaced out in a row
-    # files step 3 — draw a small "+" button to the right of the "files" label at the top of the section
+    files_box_rect = pygame.Rect(155, title_h + 381 - offset, 430, 120)
+    file_rects = []
+    window.set_clip(files_box_rect)
+    if not projects[selected]["files"]:
+        msg = font_small.render("drop or find a file here", True, (160, 160, 160))
+        window.blit(msg, (files_box_rect.centerx - msg.get_width() // 2, files_box_rect.centery - msg.get_height() // 2))
+    else:
+        for fi, file in enumerate(projects[selected]["files"]):
+            ext = os.path.splitext(file)[1].lower()
+            if ext in [".mp3", ".wav"]:
+                colour = (100, 150, 255)
+            elif ext in [".jpg", ".png"]:
+                colour = (155, 180, 80)
+            elif ext == ".pdf":
+                colour = (220, 50, 50)
+            else:
+                colour = (180, 180, 180)
+            # fix — icons overflow: use fi % 7 for x column and fi // 7 for y row
+            #       x = 160 + (fi % 7) * 60
+            #       y = title_h + 385 - offset + (fi // 7) * 70
+            x = 160 + (fi % 7) * 60
+            y = title_h + 385 - offset + (fi // 7) * 70
+            file_rects.append(pygame.Rect(x, y, 50, 50))
+            fold = 10
+            pygame.draw.polygon(window, (240, 240, 240), [
+                (x, y), (x + 50 - fold, y), (x + 50, y + fold),
+                (x + 50, y + 50), (x, y + 50)
+            ])
+            pygame.draw.polygon(window, (200, 200, 200), [
+                (x + 50 - fold, y), (x + 50 - fold, y + fold), (x + 50, y + fold)
+            ])
+            draw_raised_bevel(window, x, y, 50, 50)
+            ext_surf = font_small.render(ext.lstrip(".").upper(), True, colour)
+            window.blit(ext_surf, (x + 25 - ext_surf.get_width() // 2, y + 22))
+            name = os.path.basename(file)
+            window.blit(font_small.render(name[:8], True, (0, 0, 0)), (x, y + 52))
+    window.set_clip(pygame.Rect(SIDEBAR_X + 2, title_h, win_w - SIDEBAR_X - 2, win_h - title_h))
 
     pygame.draw.rect(window, (255, 255, 255), (157, title_h + 540 - offset, 426, 116))
     draw_double_sunken_bevel(window, 155, title_h + 538 - offset, 430, 120)
 
     link_rects = []
+    window.set_clip(pygame.Rect(157, title_h + 540 - offset, 426, 116))
     for li, link in enumerate(projects[selected]["links"]):
         lx = 157
-        ly = title_h + 541 + li * 20 - offset
+        ly = title_h + 541 + li * 20 - offset - links_scroll
         pygame.draw.rect(window, (212, 208, 200), (lx, ly, 426, 18))
         link_rects.append(pygame.Rect(lx, ly, 426, 18))
         if li == link_clicked_i:
             draw_sunken_bevel(window, lx, ly, 426, 18)
-        elif li == link_hover_i:
-            draw_raised_bevel(window, lx, ly, 426, 18)
         else:
             draw_raised_bevel(window, lx, ly, 426, 18)
         window.blit(font_small.render(link, True, (0, 0, 0)), (lx + 4, ly + 2))
+    if typing and typing_mode == "link":
+        ly = title_h + 541 + len(projects[selected]["links"]) * 20 - offset - links_scroll
+        pygame.draw.rect(window, (212, 208, 200), (157, ly, 426, 18))
+        draw_sunken_bevel(window, 157, ly, 426, 18)
+        window.blit(font_small.render(text_buffer + "|", True, (0, 0, 0)), (161, ly + 2))
+    window.set_clip(pygame.Rect(SIDEBAR_X + 2, title_h, win_w - SIDEBAR_X - 2, win_h - title_h))
 
     # tags combobox — sunken text area + raised dropdown button
     cx, cy, cw, ch = 155, title_h + 60 - offset, 160, 20
@@ -939,10 +1091,34 @@ while run:
         if tag_menu_rename_clicked:
             draw_sunken_bevel(window, tag_menu_x + 2, tag_menu_y + 19, 76, 19)
 
+    if file_menu_open:
+        pygame.draw.rect(window, (255, 255, 255), (file_menu_x, file_menu_y, 80, 38))
+        window.blit(font_small.render("open", True, (0, 0, 0)), (file_menu_x + 7, file_menu_y + 3))
+        window.blit(font_small.render("delete", True, (0, 0, 0)), (file_menu_x + 7, file_menu_y + 19))
+        file_menu_open_rect   = pygame.Rect(file_menu_x + 2, file_menu_y + 2,  76, 16)
+        file_menu_delete_rect = pygame.Rect(file_menu_x + 2, file_menu_y + 19, 76, 16)
+        draw_raised_bevel(window, file_menu_x, file_menu_y, 80, 38)
+        if file_menu_open_hover:
+            draw_raised_bevel(window, file_menu_x + 2, file_menu_y + 2, 76, 16)
+        if file_menu_delete_hover:
+            draw_raised_bevel(window, file_menu_x + 2, file_menu_y + 19, 76, 16)
+
+    if link_menu_open:
+        pygame.draw.rect(window, (255, 255, 255), (link_menu_x, link_menu_y, 80, 20))
+        window.blit(font_small.render("delete", True, (0,0,0)), (link_menu_x + 7, link_menu_y + 3))
+        link_menu_delete_rect = pygame.Rect(link_menu_x + 2, link_menu_y + 2, 76, 16)
+        draw_raised_bevel(window, link_menu_x, link_menu_y, 80, 20)
+        if link_menu_delete_hover:
+            draw_raised_bevel(window, link_menu_x + 2, link_menu_y + 2, 76, 16)
+        if link_menu_delete_clicked:
+            draw_sunken_bevel(window, link_menu_x + 2, link_menu_y + 2, 76, 16)
+
+
+
     pygame.display.update()
 
 data = {"projects": projects, "tags": all_tags}
-with open("data.json", "w") as f:
+with open(SAVE_PATH, "w") as f:
     json.dump(data, f)
 
 pygame.quit()

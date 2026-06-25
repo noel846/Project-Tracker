@@ -422,20 +422,21 @@ Resize / drag:
 CODE WALKTHROUGH — WHAT EACH SECTION DOES
 ================================================================================
 
-LINES 1-9: Imports & Init
+LINES 1-11: Imports & Init
 --------------------------
 Imports pygame (graphics), sys (exit), subprocess (restart), ctypes (OS calls),
-platform (detect Windows vs Linux), and json (save/load data).
+platform (detect Windows vs Linux), json (save/load data), webbrowser (open URLs),
+os (file paths), tkinter and filedialog (file picker dialog).
 pygame.init() starts all pygame systems.
 IS_WINDOWS detects the OS. On Windows, ctypes.wintypes is imported for native
 window move/resize. On Linux, pygame._sdl2 and libSDL2 do the same job.
 
-LINES 20-22: Window Setup
+LINES 23-25: Window Setup
 --------------------------
 Creates a 600x600 borderless window (pygame.NOFRAME — no OS title bar, we draw
 our own). Sets the window title to "project tracker".
 
-LINES 24-52: Project Data & Load
+LINES 27-47: Project Data & Load
 ----------------------------------
 projects is a list of dicts. Each dict has: name, status, tags (a list),
 progress (0.0 to 1.0), notes, links (a list of URL strings), and files (a list
@@ -450,12 +451,12 @@ A second loop at the top of the draw section enforces status rules: if progress
 is 1.0 the status is forced to "done", and if status is "done" but progress is
 below 1.0 it resets to "in progress".
 
-LINES 55-57: Fonts
+LINES 50-52: Fonts
 -------------------
 Two sizes of Tahoma — small (13px) for most text, big (16px) for headings.
 Tahoma is the font Windows XP used throughout its UI.
 
-LINES 62-127: State Variables
+LINES 57-164: State Variables
 ------------------------------
 All the variables that track what is happening right now:
 
@@ -479,17 +480,27 @@ All the variables that track what is happening right now:
     and which one the mouse is currently over
   - link_rects — list of Rects for each link row, rebuilt every draw frame
   - link_hover_i, link_clicked_i — which link row the mouse is over / holding down
-LINE 176: pygame.key.set_repeat(400, 50) — makes held keys repeat: fires once
+  - link_menu_open, link_menu_i, link_menu_x/y — whether the link right-click menu
+    is visible, which link was right-clicked, and where the menu sits
+  - link_menu_delete_rect, link_menu_delete_hover, link_menu_delete_clicked — rect,
+    hover, and click state for the delete row in the link menu
+  - files_box_rect — clickable rect for the whole files box; clicking empty space opens
+    the file picker (tkinter filedialog). Clicking an existing icon does not reopen it.
+  - file_rects — list of Rects for each file icon, rebuilt every draw frame
+  - file_menu_open, file_menu_i, file_menu_x/y — right-click menu state for files
+  - file_menu_open_rect, file_menu_delete_rect — rects for "open" and "delete" rows
+  - file_menu_open_hover, file_menu_delete_hover — hover states for the file menu rows
+LINE 213: pygame.key.set_repeat(400, 50) — makes held keys repeat: fires once
 after 400ms, then every 50ms. This is what makes holding backspace delete multiple
 characters.
 
-LINES 130-175: Bevel Functions
+LINES 167-212: Bevel Functions
 --------------------------------
 Six functions handle all the bevel drawing. Each takes (surface, x, y, w, h).
 See the BEVEL RECIPE section for which function to use where.
 They're defined before the loop so they can be called anywhere inside it.
 
-LINES 181-198: Main Loop & Caret Blink
+LINES 218-230: Main Loop & Caret Blink
 ----------------------------------------
 while run: — everything inside runs ~60 times per second (one frame).
 pygame.time.delay(16) pauses 16ms per frame to give roughly 60fps.
@@ -501,13 +512,13 @@ right_edge and bottom_edge are thin Rects along the window edges, used to
 detect when the user wants to resize.
 On Windows, hwnd (the native window ID) is fetched for the Windows API calls.
 
-LINES 200-504: Event Handling
+LINES 241-698: Event Handling
 ------------------------------
 Loops through every event that happened since the last frame.
 
-  QUIT — close normally (e.g. task manager): stop the loop.
+  QUIT (241) — close normally (e.g. task manager): stop the loop.
 
-  KEYDOWN — a key was pressed while typing is True:
+  KEYDOWN (244) — a key was pressed while typing is True:
     Escape  → cancel edit, restore saved_name
     Backspace → delete char before cursor, move cursor back
     Return  → save (name/tag) or insert newline (note)
@@ -515,39 +526,41 @@ Loops through every event that happened since the last frame.
     Left/Right arrow → move cursor_pos left or right
     Any other key → insert the character at cursor_pos
 
-  MOUSEWHEEL — scroll the main panel up or down 20px per tick.
+  MOUSEWHEEL (311) — scroll the main panel up or down 20px per tick.
     offset is clamped so you can't scroll past the top or bottom.
 
-  MOUSEBUTTONDOWN:
+  MOUSEBUTTONDOWN (319):
     - cancels typing first (typing = False)
     - checks each clickable thing in order:
         close / refresh buttons, projects + button, project cards (single/double),
         right-click on a project card opens the context menu,
         context menu delete/rename rows set their _clicked flag (shows sunken bevel),
         notes box, tags + button, tag sidebar (single/double), dropdown rows,
-        dropdown arrow button, resize edges, title bar (drag)
+        dropdown arrow button, files box (opens file picker on empty space),
+        link right-click opens delete menu, resize edges, title bar (drag)
 
-  MOUSEMOTION:
-    - updates context_menu_delete/rename_hover based on collidepoint
+  MOUSEMOTION (537):
+    - updates all _hover flags for context menu, tag menu, file menu, link menu
     - changes cursor to resize arrows when hovering over the edges
     - keeps cursor as ibeam while typing
     - if resizing: on Windows applies size live via the Windows API;
       on Linux accumulates the delta and applies on release
     - if dragging: moves the window to follow the cursor
 
-  MOUSEBUTTONUP:
+  MOUSEBUTTONUP (599):
     - if delete row was released: pops the project, closes the menu
     - if rename row was released: starts typing mode on that project, closes menu
-    - resets all _clicked and _hover flags for the context menu
+    - link delete: pops the link and closes the link menu on release
+    - resets all _clicked and _hover flags
     - applies the final window size after a resize (enforces minimum 200x100)
     - resets all drag/resize flags
 
-LINES 507-516: Layout Recalculation
+LINES 699-707: Layout Recalculation
 -------------------------------------
 Runs after events in case the window was just resized.
 Recalculates panel_w, title_h, and progress_W (the pixel width of the green bar).
 
-LINES 519-574: Draw — Background & Chrome
+LINES 709-770: Draw — Background & Chrome
 ------------------------------------------
 Fills the window with XP cream, draws the blue gradient title bar (30 strips,
 dark navy left to light blue right), the title text, sidebar background, and
@@ -556,70 +569,68 @@ Then draws the outer window border (raised bevel), the vertical divider between
 sidebar and panel (beveled), the horizontal divider splitting sidebar into
 projects/tags, and the red X and blue R buttons in the top-right.
 
-LINES 577-634: Draw — Sidebar
+LINES 771-839: Draw — Sidebar
 -------------------------------
-Projects section (577-603): loops over projects with enumerate, draws each as a
+Projects section (771-808): loops over projects with enumerate, draws each as a
 beveled box. The selected project gets draw_raised_bevel (pops out); others get
-draw_sunken_bevel. After the loop, draws the + button.
+draw_sunken_bevel. Each project has a 6x6 coloured square to its left:
+green = done, yellow = on hold, red = deadline, grey = anything else.
+After the loop, draws the + button.
 
-Tags section (606-634): same pattern for all_tags. If a tag is being renamed
-(editing_this is True), it gets draw_raised_bevel and shows text_buffer instead
-of the real tag name. After the loop, draws the tags + button.
+Tags section (809-838): same pattern for all_tags. If a tag is being renamed
+it gets draw_raised_bevel and shows text_buffer instead of the real tag name.
+After the loop, draws the tags + button.
 
-LINES 637-733: Draw — Main Panel & Progress Bar
+LINES 840-1021: Draw — Main Panel & Progress Bar
 -------------------------------------------------
-set_clip() limits drawing to the main panel area — anything outside is hidden,
-so scrolling content doesn't bleed into the sidebar or title bar.
+set_clip() (842) limits drawing to the main panel area — anything outside is
+hidden, so scrolling content doesn't bleed into the sidebar or title bar.
 
 Draws 4 fading divider lines (blue → white, each 3px tall).
-Layout rule: label → divider +17px → content +5px → next label +20px.
-
 Draws the project name in big font (shows text_buffer if typing_mode is "name").
 Draws the caret for the name field if caret_visible is True.
 Draws the "tags", "notes / todos", "files", "links" section labels.
 
-Draws the notes and files boxes with draw_double_sunken_bevel. Renders each line
-of the notes text (split by \n). Draws the caret for the notes field — uses
-the text before cursor_pos split by \n to find which line and column the caret
-is on.
+Draws the notes box (double sunken bevel, 890). Renders each line of the notes
+text (split by \n). The notes section uses its own set_clip so text doesn't
+bleed outside the box. Draws the caret for the notes field.
 
-Draws the links box (double sunken bevel) below the links label. Loops over
-projects[selected]["links"] and draws each URL as a raised-bevel row inside the box.
-link_rects is reset to [] and rebuilt each frame — one Rect per row. Clicking a
-row opens the URL in the browser using webbrowser.open() running in a background
-thread so the UI doesn't freeze.
+Draws the files box (double sunken bevel, 903). If empty, shows "drop or find
+a file here" centred in grey. If files exist, draws each as a white document icon
+with a folded corner, the extension label in colour, and the filename below.
+Icons wrap every 7 using fi % 7 for column, fi // 7 for row. file_rects is
+rebuilt each frame. Clicking empty space opens the tkinter file picker;
+pygame.event.clear() runs after it closes to discard accumulated clicks.
+Right-clicking an icon opens a file menu with "open" and "delete".
 
-Each project in the sidebar has a 6x6 coloured square to the left of its name:
-green = done, yellow = on hold, red = deadline, grey = anything else.
+Draws the links box (double sunken bevel, 943). Loops over
+projects[selected]["links"] and draws each URL as a raised-bevel row.
+link_rects is rebuilt each frame. Left-clicking opens the URL in a background
+thread. Right-clicking opens a "delete" menu.
 
-Draws the tags combobox: draw_double_sunken_bevel for the text area, showing
-the selected project's tags as a comma-separated string. The arrow button uses
-draw_button_bevel. The triangle is drawn with pygame.draw.polygon using 3 points.
+Draws the tags combobox (double sunken bevel text area + button bevel arrow).
+If dropdown_open, draws the dropdown list and fills tag_drop_rects.
 
-If dropdown_open is True, draws the dropdown box (draw_dropdown_bevel) just below.
-Loops over all_tags, draws each as a text row, appends a Rect to tag_drop_rects.
-These rects are used in the NEXT frame's events to detect clicks.
+Progress bar (999-1004): draws the grey track and green fill inside the clip.
 
-Progress bar (720-733): draws the grey track (draw_sunken_bevel) and the green
-fill (draw_progress_bevel) inside the clip region so it scrolls with the content.
+LINES 1020-1119: Draw — Menus
+------------------------------
+Called after window.set_clip(None) (1020) so menus draw on top of everything.
 
-LINES 735-773: Draw — Context & Tag Menus
-------------------------------------------
-Called after window.set_clip(None) so menus draw on top of everything including
-the clipped main panel.
-Context menu: draws a white 80x79 box with draw_raised_bevel around it.
-Has 4 rows: delete, rename, log, and status. Each row has its own _rect, _hover,
-and _clicked variable. Clicking "log" opens a digit-only text input in the panel
-that adds to the project's progress (capped at 1.0). Clicking "status" opens a
-submenu to the right listing all 4 statuses — "done" is greyed out and unclickable
-since it can only be set automatically when progress reaches 100%.
-Tag menu: identical pattern but with only delete and rename rows.
+Context menu (1023): 80x79 box, 4 rows: delete, rename, log, status.
+  Clicking "log" opens a digit input that adds to progress (capped at 1.0).
+  Clicking "status" opens a submenu to the right with all 4 statuses —
+  "done" is greyed out since it's only set automatically at 100%.
 
-LINES 776-787: Update, Save & Quit
-------------------------------------
-pygame.display.update() pushes everything to the screen — without this, nothing
-would appear.
-After the loop ends: builds a dict from projects and all_tags, writes it to
-data.json using json.dump(). Then pygame.quit() shuts down pygame and
-sys.exit() closes cleanly. On the next run, the load block at the top reads
-data.json back in so everything is restored.
+Tag menu (1074): same pattern, delete and rename only.
+
+File menu (1091): "open" (launches file with default app) and "delete"
+  (removes from list, does not delete the actual file).
+
+Link menu (1103): "delete" only — removes the link from the list.
+
+LINES 1115-1124: Update, Save & Quit
+--------------------------------------
+pygame.display.update() (1115) pushes everything to the screen.
+After the loop ends: writes projects and all_tags to data.json.
+pygame.quit() and sys.exit() close cleanly.
